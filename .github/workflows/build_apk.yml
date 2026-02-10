@@ -1,0 +1,52 @@
+name: Build APK
+
+on:
+  push:
+    branches:
+      - main  # или ветка, которую используешь
+  workflow_dispatch:
+
+jobs:
+  build_apk:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Install dependencies
+      run: |
+        sudo apt update
+        sudo apt install -y python3 python3-pip git zip unzip openjdk-11-jdk \
+          python3-setuptools python3-wheel python3-virtualenv \
+          build-essential autoconf automake libtool pkg-config zlib1g-dev \
+          libffi-dev libssl-dev
+
+    - name: Install Buildozer
+      run: |
+        pip3 install --upgrade pip
+        pip3 install buildozer
+
+    - name: Initialize buildozer.spec
+      run: |
+        if [ ! -f buildozer.spec ]; then
+          buildozer init
+        fi
+
+    - name: Configure buildozer.spec
+      run: |
+        sed -i 's/# (str) Application title/Application title = SchoolPassNFC/' buildozer.spec
+        sed -i 's/# (str) package.name/package.name = schoolpassnfc/' buildozer.spec
+        sed -i 's/# (str) package.domain/package.domain = org.rim444/' buildozer.spec
+        sed -i 's/# (list) requirements = python3,kivy/requirements = python3,kivy,kivymd/' buildozer.spec
+        sed -i 's/# (str) source.include_exts/source.include_exts = py,png,jpg,kv,atlas/' buildozer.spec
+
+    - name: Build APK
+      run: |
+        buildozer -v android debug
+
+    - name: Upload APK
+      uses: actions/upload-artifact@v3
+      with:
+        name: school-pass-apk
+        path: bin/*.apk
