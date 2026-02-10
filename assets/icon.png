@@ -1,0 +1,12 @@
+# Создай простую иконку через Python
+cd /storage/emulated/0/Download/school-pass-nfc-mobile
+mkdir -p assets
+python3 -c "
+from PIL import Image, ImageDraw
+img = Image.new('RGB', (512, 512), 'blue')
+draw = ImageDraw.Draw(img)
+draw.rectangle([50, 50, 462, 462], fill='white', outline='black', width=10)
+draw.text((256, 256), 'SP', fill='black', anchor='mm')
+img.save('assets/icon.png')
+print('Иконка создана')
+"
