@@ -1,0 +1,44 @@
+# Buildozer
+.bin/
+.buildozer/
+bin/
+*.apk
+*.apks
+*.aab
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Kivy
+*.pyc
+*.kv
+.kivy/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# System
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+build.log
+
+# Temp
+tmp/
+temp/
