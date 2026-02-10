@@ -1,30 +1,121 @@
-name: Build APK
+name: Build Android APK
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
   workflow_dispatch:
 
+env:
+  CI: true
+  BUILD_MEMORY: 8192
+
 jobs:
-  build:
+  build-android:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
-    
-    - name: Setup environment
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y git zip unzip openjdk-17-jdk python3-pip
-        pip3 install buildozer
-    
-    - name: Build APK
-      run: |
-        buildozer android debug
+    - name: Checkout repository
+      uses: actions/checkout@v4
       
-    - name: Upload APK
-      uses: actions/upload-artifact@v3
+    - name: Set up Python 3.9
+      uses: actions/setup-python@v4
       with:
-        name: app-apk
+        python-version: '3.9'
+        
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update -y
+        sudo apt-get install -y \
+          build-essential \
+          git \
+          zip \
+          unzip \
+          curl \
+          wget \
+          openjdk-17-jdk \
+          python3-pip \
+          python3-setuptools \
+          python3-venv \
+          libssl-dev \
+          libffi-dev \
+          libsqlite3-dev \
+          zlib1g-dev \
+          libncurses5-dev \
+          libgdbm-dev \
+          libnss3-dev \
+          libbz2-dev \
+          liblzma-dev \
+          libreadline-dev
+        
+    - name: Set up swap space (важно для Buildozer)
+      run: |
+        sudo fallocate -l 4G /swapfile
+        sudo chmod 600 /swapfile
+        sudo mkswap /swapfile
+        sudo swapon /swapfile
+        free -h
+        
+    - name: Configure Java
+      run: |
+        java -version
+        update-java-alternatives --list
+        export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+        echo "JAVA_HOME=$JAVA_HOME" >> $GITHUB_ENV
+        
+    - name: Install Buildozer and dependencies
+      run: |
+        pip install --upgrade pip wheel setuptools
+        pip install buildozer==1.5.0 cython==0.29.36 virtualenv
+        pip install kivy==2.3.1 kivymd==1.2.0 requests plyer pillow
+        
+    - name: Initialize Buildozer
+      run: |
+        buildozer init
+        # Проверяем и обновляем spec файл
+        if [ -f buildozer.spec ]; then
+          echo "Buildozer spec already exists, updating..."
+        fi
+        
+    - name: Build Android APK (Debug)
+      run: |
+        export PATH=$PATH:~/.local/bin
+        export BUILD_MEMORY=8192
+        
+        echo "Starting Buildozer build..."
+        buildozer android clean
+        buildozer -v android debug 2>&1 | tee build.log
+        
+        # Проверяем успешность сборки
+        if ls bin/*.apk 1> /dev/null 2>&1; then
+          echo "APK успешно собран!"
+          ls -la bin/
+        else
+          echo "Ошибка: APK не найден!"
+          exit 1
+        fi
+        
+    - name: Upload APK artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: school-pass-apk
         path: bin/*.apk
+        retention-days: 30
+        
+    - name: Upload build logs
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-logs
+        path: |
+          .buildozer/
+          build.log
+        retention-days: 30
+        
+    - name: Clean up swap
+      if: always()
+      run: |
+        sudo swapoff /swapfile
+        sudo rm -f /swapfile
