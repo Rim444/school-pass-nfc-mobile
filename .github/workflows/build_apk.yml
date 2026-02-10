@@ -48,5 +48,5 @@ jobs:
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
-        name: school-pass-apk
+        name: app-debug
         path: bin/*.apk
