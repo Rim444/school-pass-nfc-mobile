@@ -110,7 +110,7 @@ class MainScreen(Screen):
             text='СЧИТАТЬ ПРОПУСК',
             size_hint=(1, None),
             height=50,
-            md_bg_color=self.theme_cls.primary_color,
+            md_bg_color=(0.2, 0.6, 0.9, 1),
             on_release=self.read_nfc
         )
         layout.add_widget(nfc_button)
