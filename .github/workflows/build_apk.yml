@@ -15,7 +15,7 @@ jobs:
       with:
         python-version: '3.11'
 
-    - name: Set up swap (для избежания нехватки памяти)
+    - name: Set up swap
       run: |
         sudo swapoff -a || true
         sudo rm -f /swapfile
@@ -53,11 +53,7 @@ jobs:
         pip install --upgrade pip setuptools wheel
         pip install buildozer cython==0.29.36
 
-    - name: Initialize Buildozer
-      run: |
-        buildozer init
-        # Сохраняем существующий buildozer.spec, если есть
-        cp -f buildozer.spec buildozer.spec.bak || true
+    # Шаг Initialize Buildozer ПОЛНОСТЬЮ УДАЛЁН — он не нужен, spec уже есть
 
     - name: Build APK
       run: |
@@ -71,7 +67,7 @@ jobs:
         name: school-pass-apk
         path: bin/*.apk
 
-    - name: Upload build logs (если сборка упала)
+    - name: Upload build logs (если ошибка)
       if: failure()
       uses: actions/upload-artifact@v4
       with:
