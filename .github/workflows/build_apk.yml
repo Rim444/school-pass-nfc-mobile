@@ -8,85 +8,22 @@ jobs:
 
     steps:
     - name: Checkout
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: '3.11'
 
-    - name: Set up swap
-      run: |
-        sudo swapoff -a || true
-        sudo rm -f /swapfile
-        sudo dd if=/dev/zero of=/swapfile bs=1M count=4096
-        sudo chmod 600 /swapfile
-        sudo mkswap /swapfile
-        sudo swapon /swapfile
-        free -h
-
-    - name: Install system dependencies
-      run: |
-        sudo apt update
-        sudo apt install -y \
-          git \
-          wget \
-          unzip \
-          openjdk-17-jdk \
-          python3-pip \
-          python3-venv \
-          autoconf \
-          automake \
-          libtool \
-          pkg-config \
-          zlib1g-dev \
-          libncurses-dev \
-          libffi-dev \
-          libssl-dev \
-          libsqlite3-dev \
-          libbz2-dev \
-          libreadline-dev \
-          liblzma-dev
-
-    - name: Remove system Android SDK/NDK (to avoid conflicts)
-      run: |
-        unset ANDROID_HOME ANDROID_SDK_ROOT ANDROID_NDK ANDROID_NDK_HOME ANDROID_NDK_ROOT
-        echo "ANDROID_HOME=" >> $GITHUB_ENV
-        echo "ANDROID_SDK_ROOT=" >> $GITHUB_ENV
-        echo "ANDROID_NDK=" >> $GITHUB_ENV
-        echo "ANDROID_NDK_HOME=" >> $GITHUB_ENV
-        echo "ANDROID_NDK_ROOT=" >> $GITHUB_ENV
-
-    - name: Install Buildozer and Cython
-      run: |
-        pip install --upgrade pip setuptools wheel
-        pip install buildozer cython==0.29.36
-
-    - name: Prepare Buildozer
-      run: |
-        # Удаляем старую папку .buildozer для чистой сборки
-        rm -rf .buildozer
-        # Создаём структуру и клонируем p4a
-        mkdir -p .buildozer/android/platform
-        git clone --branch develop https://github.com/kivy/python-for-android.git .buildozer/android/platform/python-for-android
-
-    - name: Build APK
-      run: |
-        export PATH=$PATH:~/.local/bin
-        buildozer -v android debug
+    - name: Build APK with Buildozer
+      uses: ArtemSBulgakov/buildozer-action@v1
+      id: buildozer
+      with:
+        workdir: .
+        buildozer_version: stable
 
     - name: Upload APK artifact
       uses: actions/upload-artifact@v4
       with:
         name: school-pass-apk
-        path: bin/*.apk
-
-    - name: Upload build logs (if failed)
-      if: failure()
-      uses: actions/upload-artifact@v4
-      with:
-        name: build-logs
-        path: |
-          .buildozer/
-          buildozer-*.log
-          build.log
+        path: ${{ steps.buildozer.outputs.filename }}
