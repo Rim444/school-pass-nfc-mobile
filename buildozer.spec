@@ -8,7 +8,7 @@ source.include_exts = py,png,jpg,kv,atlas
 source.exclude_dirs = tests, bin, .buildozer, .github, __pycache__, *.pyc
 
 version = 1.0.0
-requirements = python3,kivy==2.2.1,kivymd==1.1.1,requests,plyer,pillow
+requirements = python3,kivy==2.1.0,kivymd==1.1.1,requests,plyer,pillow
 
 orientation = portrait
 fullscreen = 0
@@ -16,7 +16,6 @@ fullscreen = 0
 android.api = 33
 android.minapi = 21
 android.ndk = 25b
-android.sdk = 33
 android.archs = arm64-v8a
 
 android.permissions = INTERNET, NFC
@@ -24,4 +23,4 @@ android.accept_sdk_license = true
 
 [buildozer]
 log_level = 2
-warn_on_root = 1
+warn_on_root = 0
