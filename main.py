@@ -1,8 +1,3 @@
-"""
-School Pass NFC — финальная стабильная версия
-Android 14, KivyMD 2.0.1, без крашей, заглушка NFC
-"""
-
 from kivy.core.window import Window
 from kivy.utils import platform
 from kivymd.app import MDApp
@@ -14,7 +9,6 @@ from kivymd.uix.dialog import MDDialog
 
 if platform != 'android':
     Window.size = (400, 700)
-
 
 class MainScreen(MDBoxLayout):
     def __init__(self, **kwargs):
@@ -29,7 +23,7 @@ class MainScreen(MDBoxLayout):
             height=180,
             elevation=4,
             radius=15,
-            md_bg_color=(1, 1, 1, 1)
+            # md_bg_color УБРАН — не поддерживается в 1.2.0
         )
 
         self.name_label = MDLabel(
@@ -41,7 +35,6 @@ class MainScreen(MDBoxLayout):
             height=40
         )
         card.add_widget(self.name_label)
-
         self.class_label = MDLabel(
             text='Ученик 11А класса',
             halign='center',
@@ -51,7 +44,6 @@ class MainScreen(MDBoxLayout):
             height=30
         )
         card.add_widget(self.class_label)
-
         self.card_id_label = MDLabel(
             text='ID карты: не привязана',
             halign='center',
@@ -61,7 +53,6 @@ class MainScreen(MDBoxLayout):
             height=30
         )
         card.add_widget(self.card_id_label)
-
         self.add_widget(card)
 
         self.nfc_button = MDRaisedButton(
@@ -105,14 +96,12 @@ class MainScreen(MDBoxLayout):
             self.dialog.text = text
         self.dialog.open()
 
-
 class SchoolPassApp(MDApp):
     def build(self):
         self.theme_cls.theme_style = 'Light'
         self.theme_cls.primary_palette = 'Blue'
         self.theme_cls.accent_palette = 'LightBlue'
         return MainScreen()
-
 
 if __name__ == '__main__':
     SchoolPassApp().run()
