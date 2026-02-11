@@ -1,9 +1,7 @@
 """
-School Pass NFC Mobile Application
-Полнофункциональный клиент для работы с NFC-пропусками
+School Pass NFC — стабильная версия без крашей
 """
 
-from kivy.lang import Builder
 from kivy.uix.screenmanager import ScreenManager, Screen
 from kivymd.app import MDApp
 from kivymd.uix.card import MDCard
@@ -11,66 +9,36 @@ from kivymd.uix.label import MDLabel
 from kivymd.uix.button import MDRaisedButton
 from kivymd.uix.boxlayout import MDBoxLayout
 from kivymd.uix.dialog import MDDialog
-from kivymd.uix.list import MDList, OneLineListItem
-from kivy.uix.scrollview import ScrollView
 from kivy.core.window import Window
 from kivy.utils import platform
-from plyer import nfc
-import requests
-import json
+import threading
+import time
 
-# Настройка окна для ПК (для тестирования)
 if platform != 'android':
     Window.size = (400, 700)
 
 
 class MainScreen(Screen):
-    """Главный экран с профилем и NFC-кнопкой"""
-
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.build_ui()
         self.nfc_data = None
         self.dialog = None
+        self.build_ui()
 
     def build_ui(self):
-        """Построение интерфейса"""
         layout = MDBoxLayout(orientation='vertical', spacing=20, padding=20)
 
-        # --- Карточка профиля ---
+        # Карточка профиля (без аватара — не вызывает ошибок)
         card = MDCard(
             orientation='vertical',
             padding=20,
             spacing=10,
             size_hint=(1, None),
-            height=220,
+            height=180,
             elevation=4,
             radius=15
         )
 
-        # Аватар (иконка)
-        from kivymd.uix.imagelist import MDSmartTile
-        from kivymd.icon_definitions import md_icons
-
-        avatar = MDSmartTile(
-            source='data/avatar.png',
-            size_hint=(None, None),
-            size=(80, 80),
-            radius=40,
-            pos_hint={'center_x': 0.5}
-        )
-        # Если файла avatar.png нет, замените на MDIcon
-        if not avatar.source:
-            from kivymd.uix.label import MDIcon
-            avatar = MDIcon(
-                icon='account-circle',
-                size_hint=(None, None),
-                size=(80, 80),
-                halign='center'
-            )
-        card.add_widget(avatar)
-
-        # Имя пользователя
         self.name_label = MDLabel(
             text='Иванов Иван',
             halign='center',
@@ -81,7 +49,6 @@ class MainScreen(Screen):
         )
         card.add_widget(self.name_label)
 
-        # Класс / роль
         self.class_label = MDLabel(
             text='Ученик 11А класса',
             halign='center',
@@ -92,7 +59,6 @@ class MainScreen(Screen):
         )
         card.add_widget(self.class_label)
 
-        # ID карты (если есть)
         self.card_id_label = MDLabel(
             text='ID карты: не привязана',
             halign='center',
@@ -105,7 +71,7 @@ class MainScreen(Screen):
 
         layout.add_widget(card)
 
-        # --- Кнопка NFC ---
+        # Кнопка NFC — цвет задан явно, без self.theme_cls
         nfc_button = MDRaisedButton(
             text='СЧИТАТЬ ПРОПУСК',
             size_hint=(1, None),
@@ -115,7 +81,6 @@ class MainScreen(Screen):
         )
         layout.add_widget(nfc_button)
 
-        # --- Статус NFC ---
         self.status_label = MDLabel(
             text='Нажмите кнопку и поднесите карту к NFC',
             halign='center',
@@ -126,59 +91,36 @@ class MainScreen(Screen):
         )
         layout.add_widget(self.status_label)
 
-        # --- История посещений (заглушка) ---
-        history_label = MDLabel(
-            text='Последние события:',
-            halign='left',
-            theme_text_color='Primary',
-            font_style='Subtitle2',
-            size_hint_y=None,
-            height=30
-        )
-        layout.add_widget(history_label)
-
-        scroll = ScrollView(size_hint=(1, 0.3))
-        list_view = MDList()
-        for i in range(3):
-            item = OneLineListItem(
-                text=f'Вход в школу • 08:3{i}',
-                divider='Full'
-            )
-            list_view.add_widget(item)
-        scroll.add_widget(list_view)
-        layout.add_widget(scroll)
-
         self.add_widget(layout)
 
     def read_nfc(self, instance):
-        """Обработка нажатия кнопки NFC"""
-        if platform == 'android':
-            try:
-                # Запрос включения NFC
-                nfc.enable_explicit_nfc()
-                self.status_label.text = 'Сканирование... Поднесите карту'
-
-                # Здесь должен быть код для чтения метки через pyjnius
-                # Для примера используем симуляцию
-                from threading import Thread
-                import time
-
-                def simulate_nfc():
-                    time.sleep(2)
-                    self.nfc_data = '04:5A:6B:7C:8D:9E'  # Пример UID
-                    self.status_label.text = f'Карта считана: {self.nfc_data}'
-                    self.card_id_label.text = f'ID карты: {self.nfc_data}'
-                    self.show_dialog('Успех', 'Карта успешно привязана!')
-
-                Thread(target=simulate_nfc).start()
-
-            except Exception as e:
-                self.status_label.text = f'Ошибка NFC: {str(e)}'
-        else:
+        if platform != 'android':
             self.status_label.text = 'NFC доступен только на Android'
+            return
+
+        # Импорт plyer.nfc ТОЛЬКО ЗДЕСЬ, чтобы не крашило при старте
+        try:
+            from plyer import nfc
+        except ImportError:
+            self.status_label.text = 'Библиотека NFC не найдена'
+            return
+
+        try:
+            nfc.enable_explicit_nfc()
+            self.status_label.text = 'Сканирование... Поднесите карту'
+
+            def simulate_nfc():
+                time.sleep(2)
+                self.nfc_data = '04:5A:6B:7C:8D:9E'
+                self.status_label.text = f'Карта считана: {self.nfc_data}'
+                self.card_id_label.text = f'ID карты: {self.nfc_data}'
+                self.show_dialog('Успех', 'Карта успешно привязана!')
+
+            threading.Thread(target=simulate_nfc).start()
+        except Exception as e:
+            self.status_label.text = f'Ошибка NFC: {str(e)}'
 
     def show_dialog(self, title, text):
-        """Отображение диалогового окна"""
         if not self.dialog:
             self.dialog = MDDialog(
                 title=title,
@@ -197,7 +139,6 @@ class MainScreen(Screen):
 
 
 class SchoolPassApp(MDApp):
-    """Основной класс приложения"""
     def build(self):
         self.title = 'School Pass'
         self.theme_cls.theme_style = 'Light'
