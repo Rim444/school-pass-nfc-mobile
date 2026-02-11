@@ -1,69 +1,23 @@
 name: Build APK
 
-on:
-  push:
-    branches: [main]
-  workflow_dispatch:
+on: [push, workflow_dispatch]
 
 jobs:
   build:
     runs-on: ubuntu-latest
     
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v2
-      
-    - name: Setup Python
-      uses: actions/setup-python@v2
-      with:
-        python-version: '3.8'
-        
-    - name: Install system dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y \
-          git \
-          zip \
-          unzip \
-          openjdk-11-jdk \
-          python3-pip \
-          autoconf \
-          libtool \
-          pkg-config \
-          zlib1g-dev \
-          libncurses5-dev \
-          libtinfo5 \
-          libgdbm-dev \
-          libc6-dev \
-          libsqlite3-dev \
-          libssl-dev \
-          libffi-dev \
-          libxml2-dev \
-          libxslt-dev \
-          python3-setuptools
-        
-    - name: Install Buildozer
-      run: |
-        pip install --user --upgrade buildozer cython==0.29.33 virtualenv
-        
+    - uses: actions/checkout@v3
+    
     - name: Build APK
       run: |
-        export PATH=$PATH:~/.local/bin
-        buildozer init
-        buildozer android clean
-        buildozer -v android debug 2>&1 | tee build.log
+        sudo apt update
+        sudo apt install -y python3-pip openjdk-11-jdk
+        pip install buildozer
+        buildozer android debug
         
     - name: Upload APK
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v4    # <--- Только v4!
       with:
         name: app
         path: bin/*.apk
-        
-    - name: Upload logs
-      if: failure()
-      uses: actions/upload-artifact@v2
-      with:
-        name: logs
-        path: |
-          build.log
-          .buildozer/
