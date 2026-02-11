@@ -48,31 +48,31 @@ jobs:
           libreadline-dev \
           liblzma-dev
 
+    - name: Remove system Android SDK/NDK (to avoid conflicts)
+      run: |
+        unset ANDROID_HOME ANDROID_SDK_ROOT ANDROID_NDK ANDROID_NDK_HOME ANDROID_NDK_ROOT
+        echo "ANDROID_HOME=" >> $GITHUB_ENV
+        echo "ANDROID_SDK_ROOT=" >> $GITHUB_ENV
+        echo "ANDROID_NDK=" >> $GITHUB_ENV
+        echo "ANDROID_NDK_HOME=" >> $GITHUB_ENV
+        echo "ANDROID_NDK_ROOT=" >> $GITHUB_ENV
+
     - name: Install Buildozer and Cython
       run: |
         pip install --upgrade pip setuptools wheel
         pip install buildozer cython==0.29.36
 
-    - name: Prepare Buildozer (create python-for-android)
+    - name: Prepare Buildozer
       run: |
-        # Создаём .buildozer папку, если её нет
-        mkdir -p .buildozer
-        # Клонируем python-for-android вручную, чтобы избежать ошибки
-        if [ ! -d ".buildozer/android/platform/python-for-android" ]; then
-          mkdir -p .buildozer/android/platform
-          git clone --branch develop https://github.com/kivy/python-for-android.git .buildozer/android/platform/python-for-android
-        fi
-        # Копируем существующий spec, если его нет — создаём через init
-        if [ ! -f "buildozer.spec" ]; then
-          buildozer init
-        else
-          echo "buildozer.spec already exists, skipping init"
-        fi
+        # Удаляем старую папку .buildozer для чистой сборки
+        rm -rf .buildozer
+        # Создаём структуру и клонируем p4a
+        mkdir -p .buildozer/android/platform
+        git clone --branch develop https://github.com/kivy/python-for-android.git .buildozer/android/platform/python-for-android
 
     - name: Build APK
       run: |
         export PATH=$PATH:~/.local/bin
-        # Не используем clean — сразу собираем
         buildozer -v android debug
 
     - name: Upload APK artifact
