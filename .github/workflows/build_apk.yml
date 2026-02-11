@@ -53,12 +53,26 @@ jobs:
         pip install --upgrade pip setuptools wheel
         pip install buildozer cython==0.29.36
 
-    # Шаг Initialize Buildozer ПОЛНОСТЬЮ УДАЛЁН — он не нужен, spec уже есть
+    - name: Prepare Buildozer (create python-for-android)
+      run: |
+        # Создаём .buildozer папку, если её нет
+        mkdir -p .buildozer
+        # Клонируем python-for-android вручную, чтобы избежать ошибки
+        if [ ! -d ".buildozer/android/platform/python-for-android" ]; then
+          mkdir -p .buildozer/android/platform
+          git clone --branch develop https://github.com/kivy/python-for-android.git .buildozer/android/platform/python-for-android
+        fi
+        # Копируем существующий spec, если его нет — создаём через init
+        if [ ! -f "buildozer.spec" ]; then
+          buildozer init
+        else
+          echo "buildozer.spec already exists, skipping init"
+        fi
 
     - name: Build APK
       run: |
         export PATH=$PATH:~/.local/bin
-        buildozer android clean
+        # Не используем clean — сразу собираем
         buildozer -v android debug
 
     - name: Upload APK artifact
@@ -67,7 +81,7 @@ jobs:
         name: school-pass-apk
         path: bin/*.apk
 
-    - name: Upload build logs (если ошибка)
+    - name: Upload build logs (if failed)
       if: failure()
       uses: actions/upload-artifact@v4
       with:
