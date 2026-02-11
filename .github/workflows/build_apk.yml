@@ -5,39 +5,79 @@ on: [push, workflow_dispatch]
 jobs:
   build:
     runs-on: ubuntu-latest
-    
+
     steps:
-    - uses: actions/checkout@v3
-    
-    - name: Setup Python
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Set up Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.11'
-    
-    - name: Setup swap
+
+    - name: Set up swap
       run: |
         sudo fallocate -l 4G /swapfile
         sudo chmod 600 /swapfile
         sudo mkswap /swapfile
         sudo swapon /swapfile
-    
-    - name: Install system deps
+        free -h
+
+    - name: Install system dependencies
       run: |
         sudo apt update
-        sudo apt install -y python3-pip openjdk-17-jdk unzip zlib1g-dev
-    
-    - name: Install Buildozer
+        sudo apt install -y \
+          git \
+          wget \
+          unzip \
+          openjdk-17-jdk \
+          python3-pip \
+          python3-venv \
+          autoconf \
+          automake \
+          libtool \
+          pkg-config \
+          zlib1g-dev \
+          libncurses5-dev \
+          libncursesw5-dev \
+          libtinfo5 \
+          libffi-dev \
+          libssl-dev \
+          libsqlite3-dev \
+          libbz2-dev \
+          libreadline-dev \
+          liblzma-dev
+
+    - name: Install Buildozer and Cython
       run: |
-        pip install --upgrade pip
+        pip install --upgrade pip setuptools wheel
         pip install buildozer cython==0.29.36
-    
+
+    - name: Initialize Buildozer
+      run: |
+        buildozer init
+        # Убедимся, что наш spec файл используется
+        cp -f buildozer.spec buildozer.spec.bak || true
+        # Если buildozer.spec уже есть, он останется
+
     - name: Build APK
       run: |
+        export PATH=$PATH:~/.local/bin
         buildozer android clean
         buildozer -v android debug
-    
+
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
-        name: app
+        name: school-pass-apk
         path: bin/*.apk
+
+    - name: Upload logs (if failed)
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-logs
+        path: |
+          .buildozer/
+          buildozer-*.log
+          build.log
