@@ -1,3 +1,4 @@
+cat > buildozer.spec << 'EOF'
 [app]
 title = School Pass
 package.name = schoolpass
@@ -18,16 +19,14 @@ android.minapi = 21
 android.ndk = 25b
 android.archs = arm64-v8a
 
-# Разрешения
 android.permissions = INTERNET, NFC, VIBRATE, WAKE_LOCK
-android.features = android.hardware.nfc, android.hardware.nfc.hce
-
+android.features = android.hardware.nfc
 android.accept_sdk_license = true
 
-# Java-зависимости для NFC (HCE)
-android.gradle_dependencies = 'androidx.appcompat:appcompat:1.2.0', 'com.google.android.material:material:1.3.0'
+android.gradle_dependencies = androidx.appcompat:appcompat:1.2.0, com.google.android.material:material:1.3.0
 android.enable_androidx = true
 
 [buildozer]
 log_level = 2
 warn_on_root = 0
+EOF
