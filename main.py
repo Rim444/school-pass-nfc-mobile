@@ -1,6 +1,6 @@
 """
-School Pass NFC — стабильная версия с KivyMD 2.0.1
-Полностью совместима с Android 14, без крашей.
+School Pass NFC — финальная стабильная версия
+Android 14, KivyMD 2.0.1, без крашей, заглушка NFC
 """
 
 from kivy.core.window import Window
@@ -12,10 +12,13 @@ from kivymd.uix.label import MDLabel
 from kivymd.uix.button import MDRaisedButton
 from kivymd.uix.dialog import MDDialog
 
+# Настройка окна для ПК
 if platform != 'android':
     Window.size = (400, 700)
 
+
 class MainScreen(MDBoxLayout):
+    """Главный экран приложения"""
     def __init__(self, **kwargs):
         super().__init__(orientation='vertical', spacing=20, padding=20, **kwargs)
         self.dialog = None
@@ -29,9 +32,10 @@ class MainScreen(MDBoxLayout):
             height=180,
             elevation=4,
             radius=15,
-            md_bg_color=(1, 1, 1, 1)
+            md_bg_color=(1, 1, 1, 1)  # белый фон, без прозрачности
         )
 
+        # Имя
         self.name_label = MDLabel(
             text='Иванов Иван',
             halign='center',
@@ -42,6 +46,7 @@ class MainScreen(MDBoxLayout):
         )
         card.add_widget(self.name_label)
 
+        # Класс
         self.class_label = MDLabel(
             text='Ученик 11А класса',
             halign='center',
@@ -52,6 +57,7 @@ class MainScreen(MDBoxLayout):
         )
         card.add_widget(self.class_label)
 
+        # ID карты
         self.card_id_label = MDLabel(
             text='ID карты: не привязана',
             halign='center',
@@ -69,12 +75,12 @@ class MainScreen(MDBoxLayout):
             text='СЧИТАТЬ ПРОПУСК',
             size_hint=(1, None),
             height=50,
-            md_bg_color=self.theme_cls.primary_color,
+            md_bg_color=self.theme_cls.primary_color,  # цвет темы (доступен после build)
             on_release=self.read_nfc
         )
         self.add_widget(self.nfc_button)
 
-        # --- Статус ---
+        # --- Статус NFC ---
         self.status_label = MDLabel(
             text='Нажмите кнопку и поднесите карту к NFC',
             halign='center',
@@ -86,12 +92,13 @@ class MainScreen(MDBoxLayout):
         self.add_widget(self.status_label)
 
     def read_nfc(self, instance):
-        # Заглушка NFC – для проверки стабильности
+        """Заглушка NFC (тест) — просто меняем текст и показываем диалог"""
         self.card_id_label.text = 'ID карты: 04:5A:6B:7C:8D:9E'
         self.status_label.text = 'Карта считана (тест)'
         self.show_dialog('Успех', 'Карта успешно привязана!')
 
     def show_dialog(self, title, text):
+        """Отображение диалога"""
         if not self.dialog:
             self.dialog = MDDialog(
                 title=title,
@@ -110,11 +117,13 @@ class MainScreen(MDBoxLayout):
 
 
 class SchoolPassApp(MDApp):
+    """Основной класс приложения"""
     def build(self):
         self.theme_cls.theme_style = 'Light'
         self.theme_cls.primary_palette = 'Blue'
         self.theme_cls.accent_palette = 'LightBlue'
         return MainScreen()
+
 
 if __name__ == '__main__':
     SchoolPassApp().run()
