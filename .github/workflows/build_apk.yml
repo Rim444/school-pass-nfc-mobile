@@ -38,9 +38,7 @@ jobs:
           libtool \
           pkg-config \
           zlib1g-dev \
-          libncurses5-dev \
-          libncursesw5-dev \
-          libtinfo5 \
+          libncurses-dev \
           libffi-dev \
           libssl-dev \
           libsqlite3-dev \
@@ -56,9 +54,7 @@ jobs:
     - name: Initialize Buildozer
       run: |
         buildozer init
-        # Убедимся, что наш spec файл используется
         cp -f buildozer.spec buildozer.spec.bak || true
-        # Если buildozer.spec уже есть, он останется
 
     - name: Build APK
       run: |
