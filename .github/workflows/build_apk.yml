@@ -7,12 +7,21 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
+    - name: Checkout
+      uses: actions/checkout@v4
 
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.11'
+
+    - name: Clear Android system environment variables
+      run: |
+        echo "ANDROID_HOME=" >> $GITHUB_ENV
+        echo "ANDROID_SDK_ROOT=" >> $GITHUB_ENV
+        echo "ANDROID_NDK=" >> $GITHUB_ENV
+        echo "ANDROID_NDK_HOME=" >> $GITHUB_ENV
+        echo "ANDROID_NDK_ROOT=" >> $GITHUB_ENV
 
     - name: Install system dependencies
       run: |
@@ -32,12 +41,11 @@ jobs:
 
     - name: Build APK
       run: |
-        # Полностью чистое окружение
         rm -rf .buildozer
         export PATH=$PATH:~/.local/bin
         buildozer -v android debug
 
-    - name: Upload APK
+    - name: Upload APK artifact
       uses: actions/upload-artifact@v4
       with:
         name: school-pass-apk
