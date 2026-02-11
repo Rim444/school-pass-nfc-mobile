@@ -9,15 +9,35 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     
-    - name: Build APK
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Setup swap
+      run: |
+        sudo fallocate -l 4G /swapfile
+        sudo chmod 600 /swapfile
+        sudo mkswap /swapfile
+        sudo swapon /swapfile
+    
+    - name: Install system deps
       run: |
         sudo apt update
-        sudo apt install -y python3-pip openjdk-11-jdk
-        pip install buildozer
-        buildozer android debug
-        
+        sudo apt install -y python3-pip openjdk-17-jdk unzip zlib1g-dev
+    
+    - name: Install Buildozer
+      run: |
+        pip install --upgrade pip
+        pip install buildozer cython==0.29.36
+    
+    - name: Build APK
+      run: |
+        buildozer android clean
+        buildozer -v android debug
+    
     - name: Upload APK
-      uses: actions/upload-artifact@v4    # <--- Только v4!
+      uses: actions/upload-artifact@v4
       with:
         name: app
         path: bin/*.apk
