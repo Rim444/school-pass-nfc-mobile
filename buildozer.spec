@@ -8,28 +8,32 @@ source.include_exts = py,png,jpg,kv,atlas,json,txt,ttf,otf
 source.exclude_dirs = tests, bin, .buildozer, .github, __pycache__, *.pyc
 
 version = 1.0.0
-requirements = python3,kivy==2.2.1,kivymd==1.1.1,requests,plyer,pillow,android,pyjnius
+requirements = python3,kivy==2.2.1,kivymd==1.1.1,requests,plyer,pillow
 
 orientation = portrait
 fullscreen = 0
 
-# Android SDK/NDK — Buildozer сам скачает, не указываем конкретные версии
-android.accept_sdk_license = true
-
-# Архитектуры — заменяем android.arch на android.archs
-android.archs = arm64-v8a, armeabi-v7a
-
-# Минимальная и целевая версии Android
+# Android — фиксированные версии для стабильности
+android.api = 30
 android.minapi = 21
-android.api = 33
+android.ndk = 23b
+android.sdk = 30
+android.ndk_path = 
+android.sdk_path = 
+
+# Архитектуры
+android.archs = arm64-v8a, armeabi-v7a
 
 # Разрешения
 android.permissions = INTERNET, NFC, ACCESS_NETWORK_STATE, WAKE_LOCK, VIBRATE
 android.features = android.hardware.nfc, android.hardware.nfc.hce
 
-# Для совместимости
-android.gradle_dependencies = 'androidx.appcompat:appcompat:1.6.1', 'com.google.android.material:material:1.9.0'
+# Gradle
+android.gradle_dependencies = 'androidx.appcompat:appcompat:1.2.0', 'com.google.android.material:material:1.3.0'
 android.enable_androidx = true
+
+# Лицензия
+android.accept_sdk_license = true
 
 [buildozer]
 log_level = 2
