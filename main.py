@@ -1,9 +1,8 @@
 """
-School Pass NFC — ПОЛНАЯ ВЕРСИЯ
-- Тёмная тема, эффект жидкого стекла
-- Экран настроек (ФИО, класс, аватар, фон, удаление пропуска)
-- Сохранение/загрузка профиля
-- Анимированные переходы между экранами
+School Pass NFC — ИСПРАВЛЕННАЯ ВЕРСИЯ
+- Убраны shadow_softness / shadow_offset (несовместимы с KivyMD 1.2.0)
+- Импорт storagechooser внутри методов
+- Всё остальное без изменений
 """
 
 import json
@@ -24,15 +23,14 @@ from kivymd.uix.list import MDList, OneLineListItem
 from kivy.uix.image import Image
 from kivy.uix.scrollview import ScrollView
 from kivymd.uix.textfield import MDTextField
-from kivymd.uix.imagelist import MDSmartTile
-from plyer import storagechooser, vibrator
+from plyer import vibrator  # оставляем, он безопасен
 
 # Настройка окна для ПК
 if platform != 'android':
     Window.size = (400, 700)
 
 # -------------------------------------------------------------------
-# ГЛАВНЫЙ ЭКРАН (карточка, кнопка NFC, статус, история)
+# ГЛАВНЫЙ ЭКРАН
 # -------------------------------------------------------------------
 class MainScreen(Screen):
     def __init__(self, **kwargs):
@@ -44,24 +42,20 @@ class MainScreen(Screen):
         self.load_profile()
 
     def build_ui(self):
-        # Основной макет
         layout = MDBoxLayout(orientation='vertical', spacing=20, padding=20)
 
-        # --- Карточка профиля (полупрозрачная, эффект стекла) ---
+        # --- Карточка профиля (БЕЗ shadow_softness/shadow_offset) ---
         card = MDCard(
             orientation='vertical',
             padding=20,
             spacing=10,
             size_hint=(1, None),
             height=220,
-            elevation=6,
-            shadow_softness=12,
-            shadow_offset=(0, 4),
+            elevation=6,            # ✅ работает в 1.2.0
             radius=15,
-            md_bg_color=(0.2, 0.2, 0.2, 0.9)  # тёмный полупрозрачный фон
+            md_bg_color=(0.2, 0.2, 0.2, 0.9)
         )
 
-        # Аватар (по умолчанию иконка)
         from kivymd.uix.label import MDIcon
         self.avatar_widget = MDIcon(
             icon='account-circle',
@@ -75,7 +69,6 @@ class MainScreen(Screen):
         self.avatar_widget.pos_hint = {'center_x': 0.5}
         card.add_widget(self.avatar_widget)
 
-        # Имя
         self.name_label = MDLabel(
             text='Иванов Иван',
             halign='center',
@@ -87,7 +80,6 @@ class MainScreen(Screen):
         )
         card.add_widget(self.name_label)
 
-        # Класс
         self.class_label = MDLabel(
             text='Ученик 11А класса',
             halign='center',
@@ -99,7 +91,6 @@ class MainScreen(Screen):
         )
         card.add_widget(self.class_label)
 
-        # ID карты
         self.card_id_label = MDLabel(
             text='ID карты: не привязана',
             halign='center',
@@ -113,7 +104,6 @@ class MainScreen(Screen):
 
         layout.add_widget(card)
 
-        # --- Кнопка NFC ---
         self.nfc_button = MDRaisedButton(
             text='СЧИТАТЬ ПРОПУСК',
             size_hint=(1, None),
@@ -123,7 +113,6 @@ class MainScreen(Screen):
         )
         layout.add_widget(self.nfc_button)
 
-        # --- Статус ---
         self.status_label = MDLabel(
             text='Нажмите кнопку и поднесите карту к NFC',
             halign='center',
@@ -135,7 +124,6 @@ class MainScreen(Screen):
         )
         layout.add_widget(self.status_label)
 
-        # --- Кнопка настроек (шестерёнка) ---
         settings_btn = MDIconButton(
             icon='cog',
             pos_hint={'center_x': 0.5},
@@ -143,7 +131,6 @@ class MainScreen(Screen):
         )
         layout.add_widget(settings_btn)
 
-        # --- История посещений ---
         history_label = MDLabel(
             text='Последние события:',
             halign='left',
@@ -171,7 +158,6 @@ class MainScreen(Screen):
         self.add_widget(layout)
 
     def load_profile(self):
-        """Загружает профиль из settings.json"""
         settings_file = 'settings.json'
         if os.path.exists(settings_file):
             with open(settings_file, 'r') as f:
@@ -179,32 +165,26 @@ class MainScreen(Screen):
                 self.name_label.text = data.get('name', 'Иванов Иван')
                 self.class_label.text = data.get('class', '11А')
                 self.card_id_label.text = data.get('card_uid', 'ID карты: не привязана')
-                # Загрузка аватара
                 if 'avatar_path' in data and os.path.exists(data['avatar_path']):
                     self.set_avatar(data['avatar_path'])
-                # Загрузка фона приложения
                 if 'background_path' in data and os.path.exists(data['background_path']):
                     app = MDApp.get_running_app()
                     if hasattr(app.root, 'ids') and 'background' in app.root.ids:
                         app.root.ids.background.source = data['background_path']
 
     def set_avatar(self, path):
-        """Заменяет иконку на изображение"""
         from kivy.uix.image import Image
-        # Удаляем старый виджет аватара из карточки
         card = self.avatar_widget.parent
         card.remove_widget(self.avatar_widget)
-        # Создаём Image
         self.avatar_widget = Image(
             source=path,
             size_hint=(None, None),
             size=(80, 80),
             pos_hint={'center_x': 0.5}
         )
-        card.add_widget(self.avatar_widget, index=1)  # индекс после возможных других детей
+        card.add_widget(self.avatar_widget, index=1)
 
     def read_nfc(self, instance):
-        """Симуляция NFC (будет заменена на реальную)"""
         self.status_label.text = 'Сканирование... Поднесите карту'
 
         def simulate():
@@ -213,9 +193,7 @@ class MainScreen(Screen):
             self.card_id_label.text = f'ID карты: {self.nfc_data}'
             self.status_label.text = 'Карта считана!'
             self.show_dialog('Успех', 'Карта успешно привязана!')
-            # Сохраняем UID в настройки
             self.save_card_uid(self.nfc_data)
-            # Вибрация
             if platform == 'android':
                 try:
                     vibrator.vibrate(0.1)
@@ -225,7 +203,6 @@ class MainScreen(Screen):
         threading.Thread(target=simulate).start()
 
     def save_card_uid(self, uid):
-        """Сохраняет UID карты в settings.json"""
         settings_file = 'settings.json'
         data = {}
         if os.path.exists(settings_file):
@@ -254,7 +231,7 @@ class MainScreen(Screen):
 
 
 # -------------------------------------------------------------------
-# ЭКРАН НАСТРОЕК
+# ЭКРАН НАСТРОЕК (исправлен импорт storagechooser)
 # -------------------------------------------------------------------
 class SettingsScreen(Screen):
     def __init__(self, **kwargs):
@@ -266,7 +243,6 @@ class SettingsScreen(Screen):
     def build_ui(self):
         layout = MDBoxLayout(orientation='vertical', spacing=20, padding=20)
 
-        # Верхняя панель с кнопкой назад
         header = MDBoxLayout(adaptive_height=True)
         back_btn = MDIconButton(
             icon='arrow-left',
@@ -276,7 +252,6 @@ class SettingsScreen(Screen):
         header.add_widget(MDLabel(text='Настройки', font_style='H5'))
         layout.add_widget(header)
 
-        # Поля ввода ФИО и класса
         self.name_field = MDTextField(
             hint_text='ФИО',
             size_hint_x=1
@@ -289,7 +264,6 @@ class SettingsScreen(Screen):
         )
         layout.add_widget(self.class_field)
 
-        # Кнопки выбора изображений
         btn_avatar = MDRaisedButton(
             text='Выбрать фото профиля',
             on_release=self.choose_avatar,
@@ -306,7 +280,6 @@ class SettingsScreen(Screen):
         )
         layout.add_widget(btn_background)
 
-        # Кнопка удаления пропуска
         btn_delete = MDRaisedButton(
             text='Удалить пропуск',
             md_bg_color=(0.8, 0.2, 0.2, 1),
@@ -316,7 +289,6 @@ class SettingsScreen(Screen):
         )
         layout.add_widget(btn_delete)
 
-        # Кнопка сохранения
         btn_save = MDRaisedButton(
             text='Сохранить',
             on_release=self.save_settings,
@@ -328,7 +300,6 @@ class SettingsScreen(Screen):
         self.add_widget(layout)
 
     def load_settings(self):
-        """Загружает настройки в поля"""
         settings_file = 'settings.json'
         if os.path.exists(settings_file):
             with open(settings_file, 'r') as f:
@@ -340,7 +311,6 @@ class SettingsScreen(Screen):
             self.class_field.text = '11А'
 
     def save_settings(self, *args):
-        """Сохраняет настройки и обновляет главный экран"""
         data = {}
         settings_file = 'settings.json'
         if os.path.exists(settings_file):
@@ -353,7 +323,6 @@ class SettingsScreen(Screen):
         with open(settings_file, 'w') as f:
             json.dump(data, f)
 
-        # Обновляем главный экран, если он существует
         main_screen = self.manager.get_screen('main')
         main_screen.name_label.text = self.name_field.text
         main_screen.class_label.text = self.class_field.text
@@ -361,7 +330,8 @@ class SettingsScreen(Screen):
         self.show_dialog('Настройки сохранены')
 
     def choose_avatar(self, *args):
-        """Выбор фото профиля"""
+        # Импорт ТОЛЬКО ЗДЕСЬ, чтобы не мешал запуску
+        from plyer import storagechooser
         if platform == 'android':
             try:
                 from android.permissions import request_permissions, Permission
@@ -377,11 +347,9 @@ class SettingsScreen(Screen):
             self.show_dialog(f'Ошибка: {str(e)}')
 
     def on_avatar_selected(self, instance):
-        """Обработка выбранного аватара"""
         selected = instance.selection
         if selected:
             path = selected[0]
-            # Сохраняем путь в настройках
             settings_file = 'settings.json'
             data = {}
             if os.path.exists(settings_file):
@@ -391,14 +359,13 @@ class SettingsScreen(Screen):
             with open(settings_file, 'w') as f:
                 json.dump(data, f)
 
-            # Обновляем аватар на главном экране
             main_screen = self.manager.get_screen('main')
             main_screen.set_avatar(path)
             self.show_dialog('Аватар обновлён')
 
     def choose_background(self, *args):
-        """Выбор фонового изображения"""
-        # Аналогично аватару
+        # Импорт ТОЛЬКО ЗДЕСЬ
+        from plyer import storagechooser
         if platform == 'android':
             try:
                 from android.permissions import request_permissions, Permission
@@ -426,18 +393,15 @@ class SettingsScreen(Screen):
             with open(settings_file, 'w') as f:
                 json.dump(data, f)
 
-            # Применяем фон
             app = MDApp.get_running_app()
             if hasattr(app.root, 'ids') and 'background' in app.root.ids:
                 app.root.ids.background.source = path
             self.show_dialog('Фон обновлён')
 
     def delete_pass(self, *args):
-        """Удаляет привязку пропуска"""
         main_screen = self.manager.get_screen('main')
         main_screen.card_id_label.text = 'ID карты: не привязана'
         main_screen.nfc_data = None
-        # Удаляем UID из настроек
         settings_file = 'settings.json'
         if os.path.exists(settings_file):
             with open(settings_file, 'r') as f:
@@ -465,27 +429,21 @@ class SettingsScreen(Screen):
 class SchoolPassApp(MDApp):
     def build(self):
         self.title = 'School Pass'
-        # Тёмная тема
         self.theme_cls.theme_style = 'Dark'
         self.theme_cls.primary_palette = 'Blue'
         self.theme_cls.accent_palette = 'LightBlue'
-        # Цвет фона окна
-        Window.clearcolor = (0.12, 0.12, 0.12, 1)  # #1E1E1E
+        Window.clearcolor = (0.12, 0.12, 0.12, 1)
 
-        # Создаём менеджер экранов с анимацией
         sm = ScreenManager(transition=SlideTransition(duration=0.3))
         sm.add_widget(MainScreen(name='main'))
         sm.add_widget(SettingsScreen(name='settings'))
         return sm
 
     def on_start(self):
-        """После запуска загружаем настройки"""
-        # Загружаем фон, если есть
         settings_file = 'settings.json'
         if os.path.exists(settings_file):
             with open(settings_file, 'r') as f:
                 data = json.load(f)
-            # Применяем фон (предполагаем, что корневой виджет имеет id 'background')
             if 'background_path' in data and hasattr(self.root, 'ids') and 'background' in self.root.ids:
                 self.root.ids.background.source = data['background_path']
 
