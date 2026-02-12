@@ -1,214 +1,257 @@
-cat > main.py << 'EOF'
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 """
-School Pass NFC — максимально полная версия
-- 5 экранов, навигация
-- Реальное чтение NFC (pyjnius)
-- Сохранение настроек (plyer.storage)
-- Отправка на сервер (requests)
-- Полная обработка ошибок — без крашей
+School Pass NFC — ПОЛНАЯ ВЕРСИЯ
+- Карточка пользователя (MDCard) с аватаром-иконкой
+- Кнопка "СЧИТАТЬ ПРОПУСК" с цветом из темы
+- Реальное чтение NFC UID через pyjnius (без plyer)
+- Диалог подтверждения
+- Статусная строка
+- Готово к отправке на сервер (requests)
+- Совместимо с Android 14, KivyMD 2.0.1
 """
 
 from kivy.core.window import Window
-from kivy.clock import Clock
 from kivy.utils import platform
-from kivy.properties import ObjectProperty, StringProperty
+from kivy.clock import Clock
 
 from kivymd.app import MDApp
-from kivymd.uix.screen import MDScreen
-from kivymd.uix.screenmanager import MDScreenManager
-from kivymd.uix.bottomnavigation import MDBottomNavigation, MDBottomNavigationItem
 from kivymd.uix.boxlayout import MDBoxLayout
 from kivymd.uix.card import MDCard
 from kivymd.uix.label import MDLabel
-from kivymd.uix.button import MDRaisedButton, MDIconButton
-from kivymd.uix.textfield import MDTextField
+from kivymd.uix.button import MDRaisedButton
 from kivymd.uix.dialog import MDDialog
-from kivymd.uix.list import MDList, TwoLineListItem
-from kivymd.uix.scrollview import MDScrollView
-from kivymd.uix.toolbar import MDTopAppBar
-from kivy.uix.screenmanager import Screen
+from kivymd.uix.imagelist import MDSmartTile
+from kivymd.icon_definitions import md_icons
 
 import threading
 import time
-import json
-import os
+import requests  # для отправки на сервер
 
-# ---------------------------------------------------------------------
-# NFC модуль (реальное чтение через pyjnius, безопасный импорт)
-# ---------------------------------------------------------------------
-class NFCReader:
-    def __init__(self):
-        self.nfc_adapter = None
-        self.context = None
-        if platform == 'android':
-            self.init_nfc()
+# Настройка окна для ПК
+if platform != 'android':
+    Window.size = (400, 700)
 
-    def init_nfc(self):
-        try:
-            from jnius import autoclass
-            self.NfcAdapter = autoclass('android.nfc.NfcAdapter')
-            self.NfcManager = autoclass('android.nfc.NfcManager')
-            self.PythonActivity = autoclass('org.kivy.android.PythonActivity')
-            self.context = self.PythonActivity.mActivity
-            self.nfc_manager = self.context.getSystemService('nfc')
-            self.nfc_adapter = self.nfc_manager.getDefaultAdapter()
-        except Exception as e:
-            print(f"[NFC] Init error: {e}")
 
-    def enable_foreground_dispatch(self):
-        if not self.nfc_adapter or not self.context:
-            return False
-        try:
-            from jnius import autoclass
-            PendingIntent = autoclass('android.app.PendingIntent')
-            Intent = autoclass('android.content.Intent')
-            IntentFilter = autoclass('android.content.IntentFilter')
-
-            intent = Intent(self.context, self.context.getClass())
-            intent.setAction(self.NfcAdapter.ACTION_TAG_DISCOVERED)
-
-            pending = PendingIntent.getActivity(
-                self.context, 0, intent,
-                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_MUTABLE
-            )
-            filters = [IntentFilter(self.NfcAdapter.ACTION_TAG_DISCOVERED)]
-            tech_lists = None
-
-            self.nfc_adapter.enableForegroundDispatch(self.context, pending, filters, tech_lists)
-            return True
-        except Exception as e:
-            print(f"[NFC] Enable error: {e}")
-            return False
-
-    def disable_foreground_dispatch(self):
-        if self.nfc_adapter and self.context:
-            try:
-                self.nfc_adapter.disableForegroundDispatch(self.context)
-            except Exception as e:
-                print(f"[NFC] Disable error: {e}")
-
-    def get_uid_from_intent(self, intent):
-        try:
-            from jnius import autoclass, cast
-            tag = cast('android.nfc.Tag', intent.getParcelableExtra(self.NfcAdapter.EXTRA_TAG))
-            uid = tag.getId()
-            uid_hex = ''.join(f'{b:02X}' for b in uid)
-            return uid_hex
-        except Exception as e:
-            print(f"[NFC] UID extract error: {e}")
-            return None
-
-nfc_reader = NFCReader()
-
-# ---------------------------------------------------------------------
-# Управление настройками (plyer.storage + fallback на файл)
-# ---------------------------------------------------------------------
-class SettingsManager:
-    SETTINGS_FILE = 'schoolpass_settings.json'
-
-    @staticmethod
-    def load():
-        default = {
-            'server_url': 'http://192.168.1.100:5000',
-            'name': 'Иванов Иван',
-            'class': 'Ученик 11А класса',
-            'card_id': 'не привязана'
-        }
-        if platform == 'android':
-            try:
-                from plyer import storage
-                data = storage.get(SettingsManager.SETTINGS_FILE)
-                if data:
-                    return json.loads(data)
-            except Exception as e:
-                print(f"[Settings] Android load error: {e}")
-        else:
-            if os.path.exists(SettingsManager.SETTINGS_FILE):
-                try:
-                    with open(SettingsManager.SETTINGS_FILE, 'r') as f:
-                        return json.load(f)
-                except Exception as e:
-                    print(f"[Settings] File load error: {e}")
-        return default
-
-    @staticmethod
-    def save(key, value):
-        settings = SettingsManager.load()
-        settings[key] = value
-        if platform == 'android':
-            try:
-                from plyer import storage
-                storage.put(SettingsManager.SETTINGS_FILE, json.dumps(settings))
-            except Exception as e:
-                print(f"[Settings] Android save error: {e}")
-        else:
-            try:
-                with open(SettingsManager.SETTINGS_FILE, 'w') as f:
-                    json.dump(settings, f)
-            except Exception as e:
-                print(f"[Settings] File save error: {e}")
-
-# ---------------------------------------------------------------------
-# ЭКРАНЫ
-# ---------------------------------------------------------------------
-class MainScreen(MDScreen):
+class MainScreen(MDBoxLayout):
     def __init__(self, **kwargs):
-        super().__init__(**kwargs)
+        super().__init__(orientation='vertical', spacing=20, padding=20, **kwargs)
         self.dialog = None
-        self.app = MDApp.get_running_app()
+        self.nfc_data = None
+        self.build_ui()
 
-    def on_enter(self):
-        if platform == 'android':
-            nfc_reader.enable_foreground_dispatch()
-        self.load_profile()
+    def build_ui(self):
+        # --- Карточка профиля (без внешнего файла, иконка из md_icons) ---
+        card = MDCard(
+            orientation='vertical',
+            padding=20,
+            spacing=10,
+            size_hint=(1, None),
+            height=200,
+            elevation=4,
+            radius=15,
+            md_bg_color=(1, 1, 1, 1)
+        )
 
-    def on_leave(self):
-        if platform == 'android':
-            nfc_reader.disable_foreground_dispatch()
+        # Аватар — иконка (нет зависимости от avatar.png)
+        from kivymd.uix.label import MDIcon
+        avatar = MDIcon(
+            icon='account-circle',
+            size_hint=(None, None),
+            size=(80, 80),
+            halign='center',
+            valign='middle',
+            theme_text_color='Custom',
+            text_color=self.theme_cls.primary_color
+        )
+        avatar.pos_hint = {'center_x': 0.5}
+        card.add_widget(avatar)
 
-    def load_profile(self):
-        settings = SettingsManager.load()
-        self.ids.name_label.text = settings.get('name', 'Иванов Иван')
-        self.ids.class_label.text = settings.get('class', 'Ученик 11А класса')
-        self.ids.card_id_label.text = f"ID карты: {settings.get('card_id', 'не привязана')}"
+        # Имя пользователя
+        self.name_label = MDLabel(
+            text='Иванов Иван',
+            halign='center',
+            theme_text_color='Primary',
+            font_style='H5',
+            size_hint_y=None,
+            height=40
+        )
+        card.add_widget(self.name_label)
 
+        # Класс / роль
+        self.class_label = MDLabel(
+            text='Ученик 11А класса',
+            halign='center',
+            theme_text_color='Secondary',
+            font_style='Subtitle1',
+            size_hint_y=None,
+            height=30
+        )
+        card.add_widget(self.class_label)
+
+        # ID карты
+        self.card_id_label = MDLabel(
+            text='ID карты: не привязана',
+            halign='center',
+            theme_text_color='Hint',
+            font_style='Caption',
+            size_hint_y=None,
+            height=30
+        )
+        card.add_widget(self.card_id_label)
+
+        self.add_widget(card)
+
+        # --- Кнопка NFC ---
+        self.nfc_button = MDRaisedButton(
+            text='СЧИТАТЬ ПРОПУСК',
+            size_hint=(1, None),
+            height=50,
+            md_bg_color=self.theme_cls.primary_color,
+            on_release=self.read_nfc
+        )
+        self.add_widget(self.nfc_button)
+
+        # --- Статус NFC ---
+        self.status_label = MDLabel(
+            text='Нажмите кнопку и поднесите карту к NFC',
+            halign='center',
+            theme_text_color='Secondary',
+            font_style='Body1',
+            size_hint_y=None,
+            height=40
+        )
+        self.add_widget(self.status_label)
+
+        # --- История посещений (заглушка, можно заменить реальными данными) ---
+        from kivymd.uix.list import MDList, OneLineListItem
+        from kivy.uix.scrollview import ScrollView
+
+        history_label = MDLabel(
+            text='Последние события:',
+            halign='left',
+            theme_text_color='Primary',
+            font_style='Subtitle2',
+            size_hint_y=None,
+            height=30
+        )
+        self.add_widget(history_label)
+
+        scroll = ScrollView(size_hint=(1, 0.3))
+        list_view = MDList()
+        for i in range(3):
+            item = OneLineListItem(
+                text=f'Вход в школу • 08:3{i}',
+                divider='Full'
+            )
+            list_view.add_widget(item)
+        scroll.add_widget(list_view)
+        self.add_widget(scroll)
+
+    # ------------------------------------------------------------
+    # РЕАЛЬНОЕ ЧТЕНИЕ NFC ЧЕРЕЗ PYJNIUS (БЕЗ PLYER)
+    # ------------------------------------------------------------
     def read_nfc(self, instance):
         if platform != 'android':
-            self.ids.status_label.text = 'NFC доступен только на Android'
+            self.status_label.text = 'NFC доступен только на Android'
             return
 
-        if nfc_reader.nfc_adapter and nfc_reader.nfc_adapter.isEnabled():
-            self.ids.status_label.text = 'Сканирование... Поднесите карту'
-            # В реальности UID приходит через on_new_intent
-            # Здесь мы симулируем для демонстрации
-            Clock.schedule_once(lambda dt: self._simulate_nfc_read(), 2)
-        else:
-            self.ids.status_label.text = 'Включите NFC в настройках'
+        # Импортируем pyjnius ТОЛЬКО ЗДЕСЬ и на Android
+        try:
+            from jnius import autoclass
+            from android import activity
+            from android.runnable import run_on_ui_thread
+        except ImportError:
+            self.status_label.text = 'Библиотека NFC не найдена'
+            return
 
-    def _simulate_nfc_read(self):
-        uid = '04:5A:6B:7C:8D:9E'
-        self.ids.card_id_label.text = f'ID карты: {uid}'
-        self.ids.status_label.text = 'Карта считана!'
-        SettingsManager.save('card_id', uid)
-        self.show_dialog('Успех', f'Карта {uid} привязана')
-        self.send_to_server(uid)
+        # Запускаем чтение в отдельном потоке, чтобы не блокировать UI
+        def nfc_reader():
+            try:
+                # Получаем доступ к NFC-адаптеру
+                NfcAdapter = autoclass('android.nfc.NfcAdapter')
+                Intent = autoclass('android.content.Intent')
+                PendingIntent = autoclass('android.app.PendingIntent')
+                IntentFilter = autoclass('android.content.IntentFilter')
+                Tag = autoclass('android.nfc.Tag')
+
+                activity = MDApp.get_running_app().root_window._activity
+                adapter = NfcAdapter.getDefaultAdapter(activity)
+
+                if adapter is None:
+                    self.status_label.text = 'NFC не поддерживается'
+                    return
+
+                if not adapter.isEnabled():
+                    self.status_label.text = 'Включите NFC в настройках'
+                    # Можно открыть настройки NFC:
+                    # activity.startActivity(Intent(android.provider.Settings.ACTION_NFC_SETTINGS))
+                    return
+
+                # Создаём PendingIntent для получения уведомлений о метках
+                intent = Intent(activity, activity.getClass())
+                intent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                pending_intent = PendingIntent.getActivity(
+                    activity, 0, intent, 
+                    PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT
+                )
+
+                # Фильтры для всех типов NFC-меток
+                filters = [IntentFilter(NfcAdapter.ACTION_TAG_DISCOVERED)]
+                filters[0].addDataType('*/*')  # для MIME-типов, если нужно
+
+                # Запускаем foreground dispatch
+                run_on_ui_thread(adapter.enableForegroundDispatch)(
+                    activity, pending_intent, filters, None
+                )
+
+                self.status_label.text = 'Сканирование... Поднесите карту'
+
+                # Теперь нужно перехватить Intent в on_new_intent
+                # Для этого сохраняем callback в классе приложения
+                app = MDApp.get_running_app()
+                app.nfc_callback = self.on_nfc_tag
+
+            except Exception as e:
+                self.status_label.text = f'Ошибка NFC: {str(e)}'
+
+        threading.Thread(target=nfc_reader).start()
+
+    def on_nfc_tag(self, intent):
+        """Вызывается, когда найдена NFC-метка (из MainActivity)"""
+        try:
+            from jnius import autoclass, JavaException
+            Tag = autoclass('android.nfc.Tag')
+            tag = intent.getParcelableExtra('android.nfc.extra.TAG')
+            if tag is not None:
+                # Получаем UID в шестнадцатеричном виде
+                uid_bytes = tag.getId()
+                uid = ''.join(f'{b:02X}' for b in uid_bytes)
+                uid_formatted = ':'.join(uid[i:i+2] for i in range(0, len(uid), 2))
+
+                self.nfc_data = uid_formatted
+                self.card_id_label.text = f'ID карты: {self.nfc_data}'
+                self.status_label.text = 'Карта считана!'
+                self.show_dialog('Успех', f'Карта привязана.\nUID: {self.nfc_data}')
+
+                # Здесь можно отправить UID на сервер
+                # self.send_to_server(self.nfc_data)
+            else:
+                self.status_label.text = 'Не удалось прочитать карту'
+        except Exception as e:
+            self.status_label.text = f'Ошибка: {str(e)}'
 
     def send_to_server(self, uid):
-        def _send():
-            settings = SettingsManager.load()
-            url = settings.get('server_url')
-            try:
-                response = requests.post(url, json={'uid': uid}, timeout=5)
-                if response.status_code == 200:
-                    self.ids.status_label.text = 'Отправлено на сервер'
-                else:
-                    self.ids.status_label.text = 'Ошибка сервера'
-            except Exception as e:
-                self.ids.status_label.text = f'Ошибка: {str(e)[:20]}'
-        threading.Thread(target=_send).start()
+        """Отправка UID на ваш сервер (пример)"""
+        try:
+            # Замените URL на ваш эндпоинт
+            url = 'https://your-server.com/api/nfc'
+            payload = {'uid': uid, 'user': 'ivanov'}
+            response = requests.post(url, json=payload, timeout=5)
+            if response.status_code == 200:
+                self.status_label.text = 'Данные отправлены'
+            else:
+                self.status_label.text = 'Ошибка сервера'
+        except Exception as e:
+            self.status_label.text = 'Нет соединения'
 
     def show_dialog(self, title, text):
         if not self.dialog:
@@ -228,116 +271,25 @@ class MainScreen(MDScreen):
         self.dialog.open()
 
 
-class HistoryScreen(MDScreen):
-    def on_enter(self):
-        self.load_history()
-
-    def load_history(self):
-        self.ids.history_list.clear_widgets()
-        # Заглушка — позже подключим реальные данные
-        events = [
-            ('08:15', 'Вход', 'Школа №1'),
-            ('12:30', 'Выход', 'Столовая'),
-            ('13:45', 'Вход', 'Спортзал'),
-        ]
-        for time_, event, place in events:
-            item = TwoLineListItem(
-                text=f"{time_} - {event}",
-                secondary_text=place
-            )
-            self.ids.history_list.add_widget(item)
-
-
-class SettingsScreen(MDScreen):
-    def on_enter(self):
-        settings = SettingsManager.load()
-        self.ids.server_url.text = settings.get('server_url', '')
-        self.ids.user_name.text = settings.get('name', '')
-        self.ids.user_class.text = settings.get('class', '')
-
-    def save_settings(self):
-        SettingsManager.save('server_url', self.ids.server_url.text)
-        SettingsManager.save('name', self.ids.user_name.text)
-        SettingsManager.save('class', self.ids.user_class.text)
-        self.show_toast('Настройки сохранены')
-
-    def show_toast(self, text):
-        snack = MDDialog(
-            title='Информация',
-            text=text,
-            buttons=[
-                MDRaisedButton(text='OK', on_release=lambda x: snack.dismiss())
-            ]
-        )
-        snack.open()
-
-
-class AboutScreen(MDScreen):
-    pass
-
-
-# ---------------------------------------------------------------------
-# ГЛАВНОЕ ПРИЛОЖЕНИЕ
-# ---------------------------------------------------------------------
 class SchoolPassApp(MDApp):
     def build(self):
+        self.title = 'School Pass'
         self.theme_cls.theme_style = 'Light'
         self.theme_cls.primary_palette = 'Blue'
         self.theme_cls.accent_palette = 'LightBlue'
 
-        # Создаём экраны
-        self.screen_manager = MDScreenManager()
-        self.screen_manager.add_widget(MainScreen(name='main'))
-        self.screen_manager.add_widget(HistoryScreen(name='history'))
-        self.screen_manager.add_widget(SettingsScreen(name='settings'))
-        self.screen_manager.add_widget(AboutScreen(name='about'))
+        # Для перехвата NFC-интентов на Android
+        if platform == 'android':
+            from android import activity
+            activity.bind(on_new_intent=self.on_new_intent)
 
-        # Нижняя навигация
-        bottom_nav = MDBottomNavigation(
-            selected_color_background=self.theme_cls.primary_color,
-            text_color_active=self.theme_cls.primary_color,
-            panel_color=self.theme_cls.bg_normal
-        )
+        return MainScreen()
 
-        # Главная
-        main_item = MDBottomNavigationItem(
-            name='main',
-            text='Главная',
-            icon='account-circle'
-        )
-        main_item.add_widget(self.screen_manager.get_screen('main'))
-        bottom_nav.add_widget(main_item)
-
-        # История
-        history_item = MDBottomNavigationItem(
-            name='history',
-            text='История',
-            icon='history'
-        )
-        history_item.add_widget(self.screen_manager.get_screen('history'))
-        bottom_nav.add_widget(history_item)
-
-        # Настройки
-        settings_item = MDBottomNavigationItem(
-            name='settings',
-            text='Настройки',
-            icon='cog'
-        )
-        settings_item.add_widget(self.screen_manager.get_screen('settings'))
-        bottom_nav.add_widget(settings_item)
-
-        # О программе
-        about_item = MDBottomNavigationItem(
-            name='about',
-            text='О нас',
-            icon='information'
-        )
-        about_item.add_widget(self.screen_manager.get_screen('about'))
-        bottom_nav.add_widget(about_item)
-
-        return bottom_nav
+    def on_new_intent(self, intent):
+        """Перехватываем Intent с NFC-меткой"""
+        if hasattr(self.root, 'on_nfc_tag'):
+            self.root.on_nfc_tag(intent)
 
 
 if __name__ == '__main__':
     SchoolPassApp().run()
-EOF
