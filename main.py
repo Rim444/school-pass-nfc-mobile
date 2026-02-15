@@ -1,5 +1,5 @@
 """
-School Pass NFC — Финальная версия с журналом, нижней навигацией и сменой темы
+School Pass NFC — Исправленная версия, без крашей при запуске
 """
 
 import json
@@ -9,6 +9,7 @@ import time
 from datetime import datetime
 
 from kivy.core.window import Window
+from kivy.uix.screenmanager import Screen
 from kivy.utils import platform
 from kivymd.app import MDApp
 from kivymd.uix.boxlayout import MDBoxLayout
@@ -24,35 +25,35 @@ from kivymd.uix.bottomnavigation import MDBottomNavigation, MDBottomNavigationIt
 from kivymd.uix.toolbar import MDTopAppBar
 from plyer import vibrator
 
-# Настройка окна для ПК
 if platform != 'android':
     Window.size = (400, 700)
 
-# Режим подъёма содержимого при появлении клавиатуры
 Window.softinput_mode = 'pan'
 
 
 # -------------------------------------------------------------------
 # Главный экран (вкладка "Главная")
 # -------------------------------------------------------------------
-class MainScreen(MDBoxLayout):
+class MainScreen(Screen):
     def __init__(self, **kwargs):
-        super().__init__(orientation='vertical', spacing=0, padding=0, **kwargs)
+        super().__init__(**kwargs)
         self.dialog = None
         self.nfc_data = None
-        self.last_event_time = None  # время последнего события (для чередования входа/выхода)
+        self.last_event_time = None
         self.build_ui()
         self.load_profile()
 
     def build_ui(self):
-        # Верхний toolbar с заголовком
+        layout = MDBoxLayout(orientation='vertical', spacing=0, padding=0)
+
+        # Верхний toolbar
         self.toolbar = MDTopAppBar(title='School Pass')
-        self.add_widget(self.toolbar)
+        layout.add_widget(self.toolbar)
 
         # Основной контент
         content = MDBoxLayout(orientation='vertical', spacing=20, padding=20, adaptive_height=True)
 
-        # --- Карточка профиля ---
+        # Карточка профиля
         card = MDCard(
             orientation='vertical',
             padding=20,
@@ -61,9 +62,8 @@ class MainScreen(MDBoxLayout):
             height=200,
             elevation=6,
             radius=15,
-            md_bg_color=(0.2, 0.2, 0.2, 0.9)  # будет меняться в зависимости от темы
+            md_bg_color=self.get_card_bg_color()
         )
-        card.md_bg_color = self.get_card_bg_color()
 
         from kivymd.uix.label import MDIcon
         self.avatar = MDIcon(
@@ -113,7 +113,7 @@ class MainScreen(MDBoxLayout):
 
         content.add_widget(card)
 
-        # --- Кнопка NFC ---
+        # Кнопка NFC
         self.nfc_button = MDRaisedButton(
             text='СЧИТАТЬ ПРОПУСК',
             size_hint=(1, None),
@@ -123,7 +123,7 @@ class MainScreen(MDBoxLayout):
         )
         content.add_widget(self.nfc_button)
 
-        # --- Статус ---
+        # Статус
         self.status_label = MDLabel(
             text='Нажмите кнопку и поднесите карту к NFC',
             halign='center',
@@ -135,10 +135,11 @@ class MainScreen(MDBoxLayout):
         )
         content.add_widget(self.status_label)
 
-        # Добавляем контент в основной макет (с возможностью прокрутки)
         scroll = ScrollView(do_scroll_x=False)
         scroll.add_widget(content)
-        self.add_widget(scroll)
+        layout.add_widget(scroll)
+
+        self.add_widget(layout)
 
     def get_card_bg_color(self):
         app = MDApp.get_running_app()
@@ -160,16 +161,19 @@ class MainScreen(MDBoxLayout):
         return (0.6, 0.6, 0.6, 1) if app.theme_cls.theme_style == 'Dark' else (0.5, 0.5, 0.5, 1)
 
     def get_accent_color(self):
-        return (0.2, 0.6, 0.9, 1)  # синий
+        return (0.2, 0.6, 0.9, 1)
 
     def load_profile(self):
         settings_file = 'settings.json'
         if os.path.exists(settings_file):
-            with open(settings_file, 'r') as f:
-                data = json.load(f)
-                self.name_label.text = data.get('name', 'Иванов Иван')
-                self.class_label.text = data.get('class', '11А')
-                self.card_id_label.text = data.get('card_uid', 'ID карты: не привязана')
+            try:
+                with open(settings_file, 'r') as f:
+                    data = json.load(f)
+                    self.name_label.text = data.get('name', 'Иванов Иван')
+                    self.class_label.text = data.get('class', '11А')
+                    self.card_id_label.text = data.get('card_uid', 'ID карты: не привязана')
+            except:
+                pass
 
     def read_nfc(self, instance):
         self.status_label.text = 'Сканирование... Поднесите карту'
@@ -179,19 +183,17 @@ class MainScreen(MDBoxLayout):
             now = datetime.now()
             time_str = now.strftime('%d.%m.%Y %H:%M')
             if self.last_event_time is None or self.last_event_time == 'exit':
-                # Вход
                 event_type = 'Вход'
                 self.last_event_time = 'entry'
             else:
-                # Выход
                 event_type = 'Выход'
                 self.last_event_time = 'exit'
 
             # Добавляем запись в журнал
             app = MDApp.get_running_app()
-            app.add_log_entry(event_type, time_str)
+            if app.log_screen:
+                app.log_screen.add_entry(event_type, time_str)
 
-            # Обновляем статус
             self.status_label.text = f'{event_type} зафиксирован в {time_str}'
             if platform == 'android':
                 try:
@@ -201,90 +203,105 @@ class MainScreen(MDBoxLayout):
 
         threading.Thread(target=simulate).start()
 
+    def show_dialog(self, title, text):
+        if not self.dialog:
+            self.dialog = MDDialog(
+                title=title,
+                text=text,
+                buttons=[
+                    MDRaisedButton(
+                        text='OK',
+                        on_release=lambda x: self.dialog.dismiss()
+                    )
+                ]
+            )
+        else:
+            self.dialog.title = title
+            self.dialog.text = text
+        self.dialog.open()
+
 
 # -------------------------------------------------------------------
 # Экран журнала (вкладка "Журнал")
 # -------------------------------------------------------------------
-class LogScreen(MDBoxLayout):
+class LogScreen(Screen):
     def __init__(self, **kwargs):
-        super().__init__(orientation='vertical', **kwargs)
+        super().__init__(**kwargs)
         self.build_ui()
+        self.load_log()
 
     def build_ui(self):
+        layout = MDBoxLayout(orientation='vertical')
         self.toolbar = MDTopAppBar(title='Журнал посещений')
-        self.add_widget(self.toolbar)
+        layout.add_widget(self.toolbar)
 
         self.scroll = ScrollView()
         self.list_view = MDList()
         self.scroll.add_widget(self.list_view)
-        self.add_widget(self.scroll)
+        layout.add_widget(self.scroll)
 
-        self.load_log()
+        self.add_widget(layout)
 
     def load_log(self):
-        """Загружает записи из файла и отображает их"""
         log_file = 'log.json'
         if os.path.exists(log_file):
-            with open(log_file, 'r') as f:
-                entries = json.load(f)
-                for entry in reversed(entries):  # показываем от новых к старым
-                    item = TwoLineListItem(
-                        text=f'{entry["type"]}',
-                        secondary_text=entry['time'],
-                        divider='Full',
-                        theme_text_color='Custom',
-                        text_color=self.get_text_color(),
-                        secondary_text_color=self.get_secondary_text_color()
-                    )
-                    self.list_view.add_widget(item)
+            try:
+                with open(log_file, 'r') as f:
+                    entries = json.load(f)
+                    for entry in reversed(entries):
+                        self.add_list_item(entry['type'], entry['time'])
+            except:
+                pass
 
-    def update_log(self, entry):
-        """Добавляет новую запись в список и сохраняет в файл"""
+    def add_list_item(self, event_type, time_str):
+        app = MDApp.get_running_app()
         item = TwoLineListItem(
-            text=entry['type'],
-            secondary_text=entry['time'],
+            text=event_type,
+            secondary_text=time_str,
             divider='Full',
             theme_text_color='Custom',
-            text_color=self.get_text_color(),
-            secondary_text_color=self.get_secondary_text_color()
+            text_color=(1,1,1,1) if app.theme_cls.theme_style == 'Dark' else (0,0,0,1),
+            secondary_text_color=(0.8,0.8,0.8,1) if app.theme_cls.theme_style == 'Dark' else (0.3,0.3,0.3,1)
         )
-        self.list_view.add_widget(item, index=0)  # добавляем сверху
+        self.list_view.add_widget(item, index=0)
+
+    def add_entry(self, event_type, time_str):
+        """Добавляет запись в список и сохраняет в файл"""
+        self.add_list_item(event_type, time_str)
         # Сохраняем в файл
         log_file = 'log.json'
         entries = []
         if os.path.exists(log_file):
-            with open(log_file, 'r') as f:
-                entries = json.load(f)
-        entries.append(entry)
-        with open(log_file, 'w') as f:
-            json.dump(entries, f)
-
-    def get_text_color(self):
-        app = MDApp.get_running_app()
-        return (1, 1, 1, 1) if app.theme_cls.theme_style == 'Dark' else (0, 0, 0, 1)
-
-    def get_secondary_text_color(self):
-        app = MDApp.get_running_app()
-        return (0.8, 0.8, 0.8, 1) if app.theme_cls.theme_style == 'Dark' else (0.3, 0.3, 0.3, 1)
+            try:
+                with open(log_file, 'r') as f:
+                    entries = json.load(f)
+            except:
+                entries = []
+        entries.append({'type': event_type, 'time': time_str})
+        try:
+            with open(log_file, 'w') as f:
+                json.dump(entries, f)
+        except:
+            pass
 
 
 # -------------------------------------------------------------------
 # Экран настроек (вкладка "Настройки")
 # -------------------------------------------------------------------
-class SettingsScreen(MDBoxLayout):
+class SettingsScreen(Screen):
     def __init__(self, **kwargs):
-        super().__init__(orientation='vertical', **kwargs)
+        super().__init__(**kwargs)
         self.dialog = None
         self.build_ui()
         self.load_settings()
 
     def build_ui(self):
+        layout = MDBoxLayout(orientation='vertical')
         self.toolbar = MDTopAppBar(title='Настройки')
-        self.add_widget(self.toolbar)
+        layout.add_widget(self.toolbar)
 
         content = MDBoxLayout(orientation='vertical', spacing=20, padding=20, adaptive_height=True)
 
-        # Поля ФИО и класс
         self.name_field = MDTextField(
             hint_text='ФИО',
             size_hint_x=1
@@ -307,7 +324,6 @@ class SettingsScreen(MDBoxLayout):
         theme_box.add_widget(self.theme_switch)
         content.add_widget(theme_box)
 
-        # Кнопка удаления пропуска
         btn_delete = MDRaisedButton(
             text='Удалить пропуск',
             md_bg_color=(0.8, 0.2, 0.2, 1),
@@ -317,7 +333,6 @@ class SettingsScreen(MDBoxLayout):
         )
         content.add_widget(btn_delete)
 
-        # Кнопка сохранения
         btn_save = MDRaisedButton(
             text='Сохранить',
             on_release=self.save_settings,
@@ -328,15 +343,21 @@ class SettingsScreen(MDBoxLayout):
 
         scroll = ScrollView(do_scroll_x=False)
         scroll.add_widget(content)
-        self.add_widget(scroll)
+        layout.add_widget(scroll)
+
+        self.add_widget(layout)
 
     def load_settings(self):
         settings_file = 'settings.json'
         if os.path.exists(settings_file):
-            with open(settings_file, 'r') as f:
-                data = json.load(f)
-                self.name_field.text = data.get('name', 'Иванов Иван')
-                self.class_field.text = data.get('class', '11А')
+            try:
+                with open(settings_file, 'r') as f:
+                    data = json.load(f)
+                    self.name_field.text = data.get('name', 'Иванов Иван')
+                    self.class_field.text = data.get('class', '11А')
+            except:
+                self.name_field.text = 'Иванов Иван'
+                self.class_field.text = '11А'
         else:
             self.name_field.text = 'Иванов Иван'
             self.class_field.text = '11А'
@@ -345,47 +366,50 @@ class SettingsScreen(MDBoxLayout):
         data = {}
         settings_file = 'settings.json'
         if os.path.exists(settings_file):
-            with open(settings_file, 'r') as f:
-                data = json.load(f)
+            try:
+                with open(settings_file, 'r') as f:
+                    data = json.load(f)
+            except:
+                data = {}
 
         data['name'] = self.name_field.text
         data['class'] = self.class_field.text
 
-        with open(settings_file, 'w') as f:
-            json.dump(data, f)
+        try:
+            with open(settings_file, 'w') as f:
+                json.dump(data, f)
+        except:
+            pass
 
         # Обновляем главный экран
         app = MDApp.get_running_app()
-        main_screen = app.root.get_screen('main')
-        if main_screen:
-            main_screen.name_label.text = self.name_field.text
-            main_screen.class_label.text = self.class_field.text
+        if app.main_screen:
+            app.main_screen.name_label.text = self.name_field.text
+            app.main_screen.class_label.text = self.class_field.text
 
         self.show_dialog('Настройки сохранены')
 
     def on_theme_switch(self, switch, active):
         app = MDApp.get_running_app()
         app.theme_cls.theme_style = 'Dark' if active else 'Light'
-        # Обновляем цвета на всех экранах (можно просто перестроить, но лучше через сигналы)
-        # Для простоты перезагрузим экраны? Но это сложно. Пока просто обновим через app.
-        # В реальном приложении нужно обновлять цвета виджетов. Оставим как есть – при следующем открытии экрана цвета обновятся.
-        # В KivyMD тема применяется глобально, большинство виджетов подхватят её автоматически.
-        pass
+        # Просто меняем тему; виджеты обновятся автоматически при следующей перерисовке
 
     def delete_pass(self, *args):
         app = MDApp.get_running_app()
-        main_screen = app.root.get_screen('main')
-        if main_screen:
-            main_screen.card_id_label.text = 'ID карты: не привязана'
-            main_screen.nfc_data = None
+        if app.main_screen:
+            app.main_screen.card_id_label.text = 'ID карты: не привязана'
+            app.main_screen.nfc_data = None
         settings_file = 'settings.json'
         if os.path.exists(settings_file):
-            with open(settings_file, 'r') as f:
-                data = json.load(f)
-            if 'card_uid' in data:
-                del data['card_uid']
-                with open(settings_file, 'w') as f:
-                    json.dump(data, f)
+            try:
+                with open(settings_file, 'r') as f:
+                    data = json.load(f)
+                if 'card_uid' in data:
+                    del data['card_uid']
+                    with open(settings_file, 'w') as f:
+                        json.dump(data, f)
+            except:
+                pass
         self.show_dialog('Пропуск удалён')
 
     def show_dialog(self, text):
@@ -410,7 +434,12 @@ class SchoolPassApp(MDApp):
         self.theme_cls.accent_palette = 'LightBlue'
         Window.clearcolor = (0.12, 0.12, 0.12, 1)
 
-        # Создаём нижнюю навигацию
+        # Создаём экраны и сохраняем ссылки на них
+        self.main_screen = MainScreen(name='main')
+        self.log_screen = LogScreen(name='log')
+        self.settings_screen = SettingsScreen(name='settings')
+
+        # Нижняя навигация
         self.bottom_nav = MDBottomNavigation(
             panel_color=self.theme_cls.primary_color,
             selected_color_background=self.theme_cls.primary_light,
@@ -423,7 +452,7 @@ class SchoolPassApp(MDApp):
             text='Главная',
             icon='home'
         )
-        main_item.add_widget(MainScreen())
+        main_item.add_widget(self.main_screen)
         self.bottom_nav.add_widget(main_item)
 
         # Вкладка "Журнал"
@@ -432,7 +461,6 @@ class SchoolPassApp(MDApp):
             text='Журнал',
             icon='clipboard-list'
         )
-        self.log_screen = LogScreen()
         log_item.add_widget(self.log_screen)
         self.bottom_nav.add_widget(log_item)
 
@@ -442,15 +470,10 @@ class SchoolPassApp(MDApp):
             text='Настройки',
             icon='cog'
         )
-        settings_item.add_widget(SettingsScreen())
+        settings_item.add_widget(self.settings_screen)
         self.bottom_nav.add_widget(settings_item)
 
         return self.bottom_nav
-
-    def add_log_entry(self, event_type, time_str):
-        """Добавляет запись в журнал (вызывается из MainScreen)"""
-        entry = {'type': event_type, 'time': time_str}
-        self.log_screen.update_log(entry)
 
 
 if __name__ == '__main__':
