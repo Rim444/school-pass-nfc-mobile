@@ -18,8 +18,8 @@ android.minapi = 21
 android.ndk = 25b
 android.archs = arm64-v8a
 
-# Разрешения: добавлено READ_EXTERNAL_STORAGE для выбора фото/фона
-android.permissions = INTERNET, NFC, READ_EXTERNAL_STORAGE
+# Разрешения: добавлено VIBRATE
+android.permissions = INTERNET, NFC, READ_EXTERNAL_STORAGE, VIBRATE
 android.gradle_dependencies = androidx.appcompat:appcompat:1.6.1, com.google.android.material:material:1.9.0
 android.enable_androidx = true
 
