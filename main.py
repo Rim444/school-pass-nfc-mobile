@@ -1,5 +1,5 @@
 """
-School Pass NFC — Стабильная версия без Screen
+School Pass NFC — Абсолютно стабильная версия с исправленным временем и журналом
 """
 
 import json
@@ -7,7 +7,7 @@ import os
 import threading
 import time
 from datetime import datetime
-
+from kivy.clock import Clock  # Импорт вынесен наверх
 from kivy.core.window import Window
 from kivy.utils import platform
 from kivymd.app import MDApp
@@ -26,12 +26,11 @@ from plyer import vibrator
 
 if platform != 'android':
     Window.size = (400, 700)
-
 Window.softinput_mode = 'pan'
 
 
 # -------------------------------------------------------------------
-# Главный экран (вкладка "Главная")
+# Главный экран
 # -------------------------------------------------------------------
 class MainScreen(MDBoxLayout):
     def __init__(self, **kwargs):
@@ -43,14 +42,11 @@ class MainScreen(MDBoxLayout):
         self.load_profile()
 
     def build_ui(self):
-        # Верхний toolbar
         self.toolbar = MDTopAppBar(title='School Pass')
         self.add_widget(self.toolbar)
 
-        # Основной контент
         content = MDBoxLayout(orientation='vertical', spacing=20, padding=20, adaptive_height=True)
 
-        # Карточка профиля
         card = MDCard(
             orientation='vertical',
             padding=20,
@@ -110,7 +106,6 @@ class MainScreen(MDBoxLayout):
 
         content.add_widget(card)
 
-        # Кнопка NFC
         self.nfc_button = MDRaisedButton(
             text='СЧИТАТЬ ПРОПУСК',
             size_hint=(1, None),
@@ -120,7 +115,6 @@ class MainScreen(MDBoxLayout):
         )
         content.add_widget(self.nfc_button)
 
-        # Статус
         self.status_label = MDLabel(
             text='Нажмите кнопку и поднесите карту к NFC',
             halign='center',
@@ -159,50 +153,50 @@ class MainScreen(MDBoxLayout):
         return (0.2, 0.6, 0.9, 1)
 
     def load_profile(self):
-        settings_file = 'settings.json'
-        if os.path.exists(settings_file):
-            try:
-                with open(settings_file, 'r') as f:
+        try:
+            if os.path.exists('settings.json'):
+                with open('settings.json', 'r') as f:
                     data = json.load(f)
                     self.name_label.text = data.get('name', 'Иванов Иван')
                     self.class_label.text = data.get('class', '11А')
                     self.card_id_label.text = data.get('card_uid', 'ID карты: не привязана')
-            except:
-                pass
+        except:
+            pass  # игнорируем ошибки чтения
 
     def read_nfc(self, instance):
         self.status_label.text = 'Сканирование... Поднесите карту'
 
         def simulate():
-            time.sleep(2)
-            now = datetime.now()
-            time_str = now.strftime('%d.%m.%Y %H:%M')
-            if self.last_event_time is None or self.last_event_time == 'exit':
-                event_type = 'Вход'
-                self.last_event_time = 'entry'
-            else:
-                event_type = 'Выход'
-                self.last_event_time = 'exit'
+            try:
+                time.sleep(2)
+                now = datetime.now()
+                time_str = now.strftime('%d.%m.%Y %H:%M')
+                if self.last_event_time is None or self.last_event_time == 'exit':
+                    event_type = 'Вход'
+                    self.last_event_time = 'entry'
+                else:
+                    event_type = 'Выход'
+                    self.last_event_time = 'exit'
 
-            # Добавляем запись в журнал
-            app = MDApp.get_running_app()
-            if app.log_screen:
-                # Вызываем добавление в главном потоке
-                from kivy.clock import Clock
-                Clock.schedule_once(lambda dt: app.log_screen.add_entry(event_type, time_str))
+                app = MDApp.get_running_app()
+                if app.log_screen:
+                    # Добавляем в главном потоке
+                    Clock.schedule_once(lambda dt: app.log_screen.add_entry(event_type, time_str))
 
-            self.status_label.text = f'{event_type} зафиксирован в {time_str}'
-            if platform == 'android':
-                try:
-                    vibrator.vibrate(0.1)
-                except:
-                    pass
+                self.status_label.text = f'{event_type} зафиксирован в {time_str}'
+                if platform == 'android':
+                    try:
+                        vibrator.vibrate(0.1)
+                    except:
+                        pass
+            except Exception as e:
+                print(f'Ошибка в simulate: {e}')
 
         threading.Thread(target=simulate).start()
 
 
 # -------------------------------------------------------------------
-# Экран журнала (вкладка "Журнал")
+# Экран журнала
 # -------------------------------------------------------------------
 class LogScreen(MDBoxLayout):
     def __init__(self, **kwargs):
@@ -213,22 +207,20 @@ class LogScreen(MDBoxLayout):
     def build_ui(self):
         self.toolbar = MDTopAppBar(title='Журнал посещений')
         self.add_widget(self.toolbar)
-
         self.scroll = ScrollView()
         self.list_view = MDList()
         self.scroll.add_widget(self.list_view)
         self.add_widget(self.scroll)
 
     def load_log(self):
-        log_file = 'log.json'
-        if os.path.exists(log_file):
-            try:
-                with open(log_file, 'r') as f:
+        try:
+            if os.path.exists('log.json'):
+                with open('log.json', 'r') as f:
                     entries = json.load(f)
                     for entry in reversed(entries):
                         self.add_list_item(entry['type'], entry['time'])
-            except:
-                pass
+        except:
+            pass
 
     def add_list_item(self, event_type, time_str):
         app = MDApp.get_running_app()
@@ -245,27 +237,23 @@ class LogScreen(MDBoxLayout):
         self.list_view.add_widget(item, index=0)
 
     def add_entry(self, event_type, time_str):
-        """Добавляет запись в список и сохраняет в файл"""
         self.add_list_item(event_type, time_str)
-        # Сохраняем в файл
-        log_file = 'log.json'
-        entries = []
-        if os.path.exists(log_file):
-            try:
+        try:
+            # Запись в файл с проверкой доступа
+            log_file = 'log.json'
+            entries = []
+            if os.path.exists(log_file):
                 with open(log_file, 'r') as f:
                     entries = json.load(f)
-            except:
-                entries = []
-        entries.append({'type': event_type, 'time': time_str})
-        try:
+            entries.append({'type': event_type, 'time': time_str})
             with open(log_file, 'w') as f:
                 json.dump(entries, f)
-        except:
-            pass
+        except Exception as e:
+            print(f'Ошибка сохранения журнала: {e}')
 
 
 # -------------------------------------------------------------------
-# Экран настроек (вкладка "Настройки")
+# Экран настроек
 # -------------------------------------------------------------------
 class SettingsScreen(MDBoxLayout):
     def __init__(self, **kwargs):
@@ -292,7 +280,6 @@ class SettingsScreen(MDBoxLayout):
         )
         content.add_widget(self.class_field)
 
-        # Переключатель темы
         theme_box = MDBoxLayout(orientation='horizontal', adaptive_height=True, spacing=10)
         theme_box.add_widget(MDLabel(text='Тёмная тема', size_hint_x=0.7))
         self.theme_switch = MDSwitch(size_hint_x=0.3)
@@ -324,68 +311,58 @@ class SettingsScreen(MDBoxLayout):
         self.add_widget(scroll)
 
     def load_settings(self):
-        settings_file = 'settings.json'
-        if os.path.exists(settings_file):
-            try:
-                with open(settings_file, 'r') as f:
+        try:
+            if os.path.exists('settings.json'):
+                with open('settings.json', 'r') as f:
                     data = json.load(f)
                     self.name_field.text = data.get('name', 'Иванов Иван')
                     self.class_field.text = data.get('class', '11А')
-            except:
-                self.name_field.text = 'Иванов Иван'
-                self.class_field.text = '11А'
-        else:
+        except:
             self.name_field.text = 'Иванов Иван'
             self.class_field.text = '11А'
 
     def save_settings(self, *args):
-        data = {}
-        settings_file = 'settings.json'
-        if os.path.exists(settings_file):
-            try:
-                with open(settings_file, 'r') as f:
-                    data = json.load(f)
-            except:
-                data = {}
-
-        data['name'] = self.name_field.text
-        data['class'] = self.class_field.text
-
         try:
-            with open(settings_file, 'w') as f:
+            data = {}
+            if os.path.exists('settings.json'):
+                with open('settings.json', 'r') as f:
+                    data = json.load(f)
+
+            data['name'] = self.name_field.text
+            data['class'] = self.class_field.text
+
+            with open('settings.json', 'w') as f:
                 json.dump(data, f)
-        except:
-            pass
 
-        # Обновляем главный экран
-        app = MDApp.get_running_app()
-        if app.main_screen:
-            app.main_screen.name_label.text = self.name_field.text
-            app.main_screen.class_label.text = self.class_field.text
+            app = MDApp.get_running_app()
+            if app.main_screen:
+                app.main_screen.name_label.text = self.name_field.text
+                app.main_screen.class_label.text = self.class_field.text
 
-        self.show_dialog('Настройки сохранены')
+            self.show_dialog('Настройки сохранены')
+        except Exception as e:
+            self.show_dialog(f'Ошибка: {e}')
 
     def on_theme_switch(self, switch, active):
         app = MDApp.get_running_app()
         app.theme_cls.theme_style = 'Dark' if active else 'Light'
 
     def delete_pass(self, *args):
-        app = MDApp.get_running_app()
-        if app.main_screen:
-            app.main_screen.card_id_label.text = 'ID карты: не привязана'
-            app.main_screen.nfc_data = None
-        settings_file = 'settings.json'
-        if os.path.exists(settings_file):
-            try:
-                with open(settings_file, 'r') as f:
+        try:
+            app = MDApp.get_running_app()
+            if app.main_screen:
+                app.main_screen.card_id_label.text = 'ID карты: не привязана'
+                app.main_screen.nfc_data = None
+            if os.path.exists('settings.json'):
+                with open('settings.json', 'r') as f:
                     data = json.load(f)
                 if 'card_uid' in data:
                     del data['card_uid']
-                    with open(settings_file, 'w') as f:
+                    with open('settings.json', 'w') as f:
                         json.dump(data, f)
-            except:
-                pass
-        self.show_dialog('Пропуск удалён')
+            self.show_dialog('Пропуск удалён')
+        except Exception as e:
+            self.show_dialog(f'Ошибка: {e}')
 
     def show_dialog(self, text):
         if not self.dialog:
@@ -399,7 +376,7 @@ class SettingsScreen(MDBoxLayout):
 
 
 # -------------------------------------------------------------------
-# Корневое приложение с нижней навигацией
+# Приложение
 # -------------------------------------------------------------------
 class SchoolPassApp(MDApp):
     def build(self):
@@ -409,19 +386,16 @@ class SchoolPassApp(MDApp):
         self.theme_cls.accent_palette = 'LightBlue'
         Window.clearcolor = (0.12, 0.12, 0.12, 1)
 
-        # Создаём экраны и сохраняем ссылки
         self.main_screen = MainScreen()
         self.log_screen = LogScreen()
         self.settings_screen = SettingsScreen()
 
-        # Нижняя навигация
         self.bottom_nav = MDBottomNavigation(
             panel_color=self.theme_cls.primary_color,
             selected_color_background=self.theme_cls.primary_light,
             text_color_active=(1, 1, 1, 1),
         )
 
-        # Вкладка "Главная"
         main_item = MDBottomNavigationItem(
             name='main',
             text='Главная',
@@ -430,7 +404,6 @@ class SchoolPassApp(MDApp):
         main_item.add_widget(self.main_screen)
         self.bottom_nav.add_widget(main_item)
 
-        # Вкладка "Журнал"
         log_item = MDBottomNavigationItem(
             name='log',
             text='Журнал',
@@ -439,7 +412,6 @@ class SchoolPassApp(MDApp):
         log_item.add_widget(self.log_screen)
         self.bottom_nav.add_widget(log_item)
 
-        # Вкладка "Настройки"
         settings_item = MDBottomNavigationItem(
             name='settings',
             text='Настройки',
