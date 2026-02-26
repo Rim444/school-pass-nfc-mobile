@@ -1,5 +1,5 @@
 """
-School Pass NFC — Стабильная версия с Screen и записью логов во внутреннюю память
+School Pass NFC — Версия с гарантированной записью лога в Download
 """
 
 import json
@@ -28,30 +28,33 @@ from kivymd.uix.toolbar import MDTopAppBar
 from plyer import vibrator
 
 # ================================================================
-# ГЛОБАЛЬНЫЙ ПЕРЕХВАТЧИК НЕОБРАБОТАННЫХ ИСКЛЮЧЕНИЙ (ДЛЯ ANDROID)
+# ЖЁСТКИЙ ПЕРЕХВАТЧИК ОШИБОК В САМОМ НАЧАЛЕ
 # ================================================================
-def global_excepthook(exctype, value, tb):
-    """Записывает стек ошибки во внутреннюю директорию приложения"""
-    try:
-        # Внутренняя директория приложения (доступна всегда)
-        if platform == 'android':
-            from android.storage import app_storage_path
-            log_dir = app_storage_path()
-        else:
-            log_dir = '.'
-        log_path = os.path.join(log_dir, 'crash_log.txt')
-        with open(log_path, 'a') as f:
-            f.write('\n=== CRASH AT {} ===\n'.format(datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
-            traceback.print_exception(exctype, value, tb, file=f)
-            f.write('\n')
-    except Exception as e:
-        # Если не удалось записать, игнорируем
-        pass
-    # Вызываем оригинальный обработчик (на всякий случай)
-    sys.__excepthook__(exctype, value, tb)
+try:
+    # Эта функция будет вызвана при любом необработанном исключении
+    def crash_reporter(exctype, value, tb):
+        try:
+            log_path = '/storage/emulated/0/Download/crash_log.txt'
+            with open(log_path, 'a') as f:
+                f.write('\n=== CRASH AT {} ===\n'.format(datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+                traceback.print_exception(exctype, value, tb, file=f)
+                f.write('\n')
+        except Exception as e:
+            # Если не удалось записать в Download, пробуем в корень внутренней памяти
+            try:
+                alt_path = '/data/data/org.schoolpass.schoolpass/files/crash_log.txt'
+                with open(alt_path, 'a') as f:
+                    f.write('\n=== CRASH AT {} ===\n'.format(datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+                    traceback.print_exception(exctype, value, tb, file=f)
+                    f.write('\n')
+            except:
+                pass
+        # Вызываем старый обработчик
+        sys.__excepthook__(exctype, value, tb)
 
-if platform == 'android':
-    sys.excepthook = global_excepthook
+    sys.excepthook = crash_reporter
+except:
+    pass
 # ================================================================
 
 if platform != 'android':
@@ -74,14 +77,11 @@ class MainScreen(Screen):
     def build_ui(self):
         layout = MDBoxLayout(orientation='vertical', spacing=0, padding=0)
 
-        # Верхний toolbar
         self.toolbar = MDTopAppBar(title='School Pass')
         layout.add_widget(self.toolbar)
 
-        # Основной контент
         content = MDBoxLayout(orientation='vertical', spacing=20, padding=20, adaptive_height=True)
 
-        # Карточка профиля
         card = MDCard(
             orientation='vertical',
             padding=20,
@@ -141,7 +141,6 @@ class MainScreen(Screen):
 
         content.add_widget(card)
 
-        # Кнопка NFC
         self.nfc_button = MDRaisedButton(
             text='СЧИТАТЬ ПРОПУСК',
             size_hint=(1, None),
@@ -151,7 +150,6 @@ class MainScreen(Screen):
         )
         content.add_widget(self.nfc_button)
 
-        # Статус
         self.status_label = MDLabel(
             text='Нажмите кнопку и поднесите карту к NFC',
             halign='center',
@@ -228,23 +226,18 @@ class MainScreen(Screen):
                     except:
                         pass
             except Exception as e:
-                # Если ошибка в потоке, записываем её в лог
-                if platform == 'android':
-                    try:
-                        from android.storage import app_storage_path
-                        log_dir = app_storage_path()
-                        log_path = os.path.join(log_dir, 'crash_log.txt')
-                        with open(log_path, 'a') as f:
-                            f.write(f'\n--- Ошибка в потоке simulate: {e}\n')
-                            traceback.print_exc(file=f)
-                    except:
-                        pass
+                try:
+                    with open('/storage/emulated/0/Download/crash_log.txt', 'a') as f:
+                        f.write(f'\n--- Ошибка в потоке simulate: {e}\n')
+                        traceback.print_exc(file=f)
+                except:
+                    pass
 
         threading.Thread(target=simulate).start()
 
 
 # -------------------------------------------------------------------
-# Экран журнала (вкладка "Журнал")
+# Экран журнала
 # -------------------------------------------------------------------
 class LogScreen(Screen):
     def __init__(self, **kwargs):
@@ -298,20 +291,15 @@ class LogScreen(Screen):
             with open(log_file, 'w') as f:
                 json.dump(entries, f)
         except Exception as e:
-            # Запись ошибки в лог-файл
-            if platform == 'android':
-                try:
-                    from android.storage import app_storage_path
-                    log_dir = app_storage_path()
-                    log_path = os.path.join(log_dir, 'crash_log.txt')
-                    with open(log_path, 'a') as f:
-                        f.write(f'\n--- Ошибка записи журнала: {e}\n')
-                except:
-                    pass
+            try:
+                with open('/storage/emulated/0/Download/crash_log.txt', 'a') as f:
+                    f.write(f'\n--- Ошибка записи журнала: {e}\n')
+            except:
+                pass
 
 
 # -------------------------------------------------------------------
-# Экран настроек (вкладка "Настройки")
+# Экран настроек
 # -------------------------------------------------------------------
 class SettingsScreen(Screen):
     def __init__(self, **kwargs):
@@ -437,7 +425,7 @@ class SettingsScreen(Screen):
 
 
 # -------------------------------------------------------------------
-# Корневое приложение с нижней навигацией
+# Приложение
 # -------------------------------------------------------------------
 class SchoolPassApp(MDApp):
     def build(self):
@@ -447,19 +435,16 @@ class SchoolPassApp(MDApp):
         self.theme_cls.accent_palette = 'LightBlue'
         Window.clearcolor = (0.12, 0.12, 0.12, 1)
 
-        # Создаём экраны и сохраняем ссылки
         self.main_screen = MainScreen(name='main')
         self.log_screen = LogScreen(name='log')
         self.settings_screen = SettingsScreen(name='settings')
 
-        # Нижняя навигация
         self.bottom_nav = MDBottomNavigation(
             panel_color=self.theme_cls.primary_color,
             selected_color_background=self.theme_cls.primary_light,
             text_color_active=(1, 1, 1, 1),
         )
 
-        # Вкладка "Главная"
         main_item = MDBottomNavigationItem(
             name='main',
             text='Главная',
@@ -468,7 +453,6 @@ class SchoolPassApp(MDApp):
         main_item.add_widget(self.main_screen)
         self.bottom_nav.add_widget(main_item)
 
-        # Вкладка "Журнал"
         log_item = MDBottomNavigationItem(
             name='log',
             text='Журнал',
@@ -477,7 +461,6 @@ class SchoolPassApp(MDApp):
         log_item.add_widget(self.log_screen)
         self.bottom_nav.add_widget(log_item)
 
-        # Вкладка "Настройки"
         settings_item = MDBottomNavigationItem(
             name='settings',
             text='Настройки',
