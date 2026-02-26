@@ -8,7 +8,7 @@ source.include_exts = py,png,jpg,kv,atlas
 source.exclude_dirs = tests, bin, .buildozer, .github, __pycache__, *.pyc
 
 version = 1.0.0
-requirements = python3,kivy==2.2.1,kivymd==1.2.0,requests,plyer
+requirements = python3,kivy==2.2.1,kivymd==1.2.0,plyer
 
 orientation = portrait
 fullscreen = 0
@@ -18,8 +18,8 @@ android.minapi = 21
 android.ndk = 25b
 android.archs = arm64-v8a
 
-# Разрешения: добавлено VIBRATE
-android.permissions = INTERNET, NFC, READ_EXTERNAL_STORAGE, VIBRATE
+# Разрешения: добавлены WRITE_EXTERNAL_STORAGE и VIBRATE
+android.permissions = INTERNET, NFC, READ_EXTERNAL_STORAGE, WRITE_EXTERNAL_STORAGE, VIBRATE
 android.gradle_dependencies = androidx.appcompat:appcompat:1.6.1, com.google.android.material:material:1.9.0
 android.enable_androidx = true
 
