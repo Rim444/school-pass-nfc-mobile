@@ -18,7 +18,7 @@ android.minapi = 21
 android.ndk = 25b
 android.archs = arm64-v8a
 
-# Разрешения: добавлены WRITE_EXTERNAL_STORAGE и VIBRATE
+# КРИТИЧЕСКИ ВАЖНО: добавлены разрешения на запись
 android.permissions = INTERNET, NFC, READ_EXTERNAL_STORAGE, WRITE_EXTERNAL_STORAGE, VIBRATE
 android.gradle_dependencies = androidx.appcompat:appcompat:1.6.1, com.google.android.material:material:1.9.0
 android.enable_androidx = true
