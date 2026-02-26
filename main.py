@@ -1,14 +1,17 @@
 """
-School Pass NFC — Абсолютно стабильная версия с исправленным временем и журналом
+School Pass NFC — Стабильная версия с Screen и записью логов во внутреннюю память
 """
 
 import json
 import os
 import threading
 import time
+import sys
+import traceback
 from datetime import datetime
-from kivy.clock import Clock  # Импорт вынесен наверх
+from kivy.clock import Clock
 from kivy.core.window import Window
+from kivy.uix.screenmanager import Screen, ScreenManager
 from kivy.utils import platform
 from kivymd.app import MDApp
 from kivymd.uix.boxlayout import MDBoxLayout
@@ -24,17 +27,44 @@ from kivymd.uix.bottomnavigation import MDBottomNavigation, MDBottomNavigationIt
 from kivymd.uix.toolbar import MDTopAppBar
 from plyer import vibrator
 
+# ================================================================
+# ГЛОБАЛЬНЫЙ ПЕРЕХВАТЧИК НЕОБРАБОТАННЫХ ИСКЛЮЧЕНИЙ (ДЛЯ ANDROID)
+# ================================================================
+def global_excepthook(exctype, value, tb):
+    """Записывает стек ошибки во внутреннюю директорию приложения"""
+    try:
+        # Внутренняя директория приложения (доступна всегда)
+        if platform == 'android':
+            from android.storage import app_storage_path
+            log_dir = app_storage_path()
+        else:
+            log_dir = '.'
+        log_path = os.path.join(log_dir, 'crash_log.txt')
+        with open(log_path, 'a') as f:
+            f.write('\n=== CRASH AT {} ===\n'.format(datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+            traceback.print_exception(exctype, value, tb, file=f)
+            f.write('\n')
+    except Exception as e:
+        # Если не удалось записать, игнорируем
+        pass
+    # Вызываем оригинальный обработчик (на всякий случай)
+    sys.__excepthook__(exctype, value, tb)
+
+if platform == 'android':
+    sys.excepthook = global_excepthook
+# ================================================================
+
 if platform != 'android':
     Window.size = (400, 700)
 Window.softinput_mode = 'pan'
 
 
 # -------------------------------------------------------------------
-# Главный экран
+# Главный экран (вкладка "Главная")
 # -------------------------------------------------------------------
-class MainScreen(MDBoxLayout):
+class MainScreen(Screen):
     def __init__(self, **kwargs):
-        super().__init__(orientation='vertical', spacing=0, padding=0, **kwargs)
+        super().__init__(**kwargs)
         self.dialog = None
         self.nfc_data = None
         self.last_event_time = None
@@ -42,11 +72,16 @@ class MainScreen(MDBoxLayout):
         self.load_profile()
 
     def build_ui(self):
-        self.toolbar = MDTopAppBar(title='School Pass')
-        self.add_widget(self.toolbar)
+        layout = MDBoxLayout(orientation='vertical', spacing=0, padding=0)
 
+        # Верхний toolbar
+        self.toolbar = MDTopAppBar(title='School Pass')
+        layout.add_widget(self.toolbar)
+
+        # Основной контент
         content = MDBoxLayout(orientation='vertical', spacing=20, padding=20, adaptive_height=True)
 
+        # Карточка профиля
         card = MDCard(
             orientation='vertical',
             padding=20,
@@ -106,6 +141,7 @@ class MainScreen(MDBoxLayout):
 
         content.add_widget(card)
 
+        # Кнопка NFC
         self.nfc_button = MDRaisedButton(
             text='СЧИТАТЬ ПРОПУСК',
             size_hint=(1, None),
@@ -115,6 +151,7 @@ class MainScreen(MDBoxLayout):
         )
         content.add_widget(self.nfc_button)
 
+        # Статус
         self.status_label = MDLabel(
             text='Нажмите кнопку и поднесите карту к NFC',
             halign='center',
@@ -128,7 +165,9 @@ class MainScreen(MDBoxLayout):
 
         scroll = ScrollView(do_scroll_x=False)
         scroll.add_widget(content)
-        self.add_widget(scroll)
+        layout.add_widget(scroll)
+
+        self.add_widget(layout)
 
     def get_card_bg_color(self):
         app = MDApp.get_running_app()
@@ -161,7 +200,7 @@ class MainScreen(MDBoxLayout):
                     self.class_label.text = data.get('class', '11А')
                     self.card_id_label.text = data.get('card_uid', 'ID карты: не привязана')
         except:
-            pass  # игнорируем ошибки чтения
+            pass
 
     def read_nfc(self, instance):
         self.status_label.text = 'Сканирование... Поднесите карту'
@@ -180,7 +219,6 @@ class MainScreen(MDBoxLayout):
 
                 app = MDApp.get_running_app()
                 if app.log_screen:
-                    # Добавляем в главном потоке
                     Clock.schedule_once(lambda dt: app.log_screen.add_entry(event_type, time_str))
 
                 self.status_label.text = f'{event_type} зафиксирован в {time_str}'
@@ -190,27 +228,39 @@ class MainScreen(MDBoxLayout):
                     except:
                         pass
             except Exception as e:
-                print(f'Ошибка в simulate: {e}')
+                # Если ошибка в потоке, записываем её в лог
+                if platform == 'android':
+                    try:
+                        from android.storage import app_storage_path
+                        log_dir = app_storage_path()
+                        log_path = os.path.join(log_dir, 'crash_log.txt')
+                        with open(log_path, 'a') as f:
+                            f.write(f'\n--- Ошибка в потоке simulate: {e}\n')
+                            traceback.print_exc(file=f)
+                    except:
+                        pass
 
         threading.Thread(target=simulate).start()
 
 
 # -------------------------------------------------------------------
-# Экран журнала
+# Экран журнала (вкладка "Журнал")
 # -------------------------------------------------------------------
-class LogScreen(MDBoxLayout):
+class LogScreen(Screen):
     def __init__(self, **kwargs):
-        super().__init__(orientation='vertical', **kwargs)
+        super().__init__(**kwargs)
         self.build_ui()
         self.load_log()
 
     def build_ui(self):
+        layout = MDBoxLayout(orientation='vertical')
         self.toolbar = MDTopAppBar(title='Журнал посещений')
-        self.add_widget(self.toolbar)
+        layout.add_widget(self.toolbar)
         self.scroll = ScrollView()
         self.list_view = MDList()
         self.scroll.add_widget(self.list_view)
-        self.add_widget(self.scroll)
+        layout.add_widget(self.scroll)
+        self.add_widget(layout)
 
     def load_log(self):
         try:
@@ -239,7 +289,6 @@ class LogScreen(MDBoxLayout):
     def add_entry(self, event_type, time_str):
         self.add_list_item(event_type, time_str)
         try:
-            # Запись в файл с проверкой доступа
             log_file = 'log.json'
             entries = []
             if os.path.exists(log_file):
@@ -249,22 +298,32 @@ class LogScreen(MDBoxLayout):
             with open(log_file, 'w') as f:
                 json.dump(entries, f)
         except Exception as e:
-            print(f'Ошибка сохранения журнала: {e}')
+            # Запись ошибки в лог-файл
+            if platform == 'android':
+                try:
+                    from android.storage import app_storage_path
+                    log_dir = app_storage_path()
+                    log_path = os.path.join(log_dir, 'crash_log.txt')
+                    with open(log_path, 'a') as f:
+                        f.write(f'\n--- Ошибка записи журнала: {e}\n')
+                except:
+                    pass
 
 
 # -------------------------------------------------------------------
-# Экран настроек
+# Экран настроек (вкладка "Настройки")
 # -------------------------------------------------------------------
-class SettingsScreen(MDBoxLayout):
+class SettingsScreen(Screen):
     def __init__(self, **kwargs):
-        super().__init__(orientation='vertical', **kwargs)
+        super().__init__(**kwargs)
         self.dialog = None
         self.build_ui()
         self.load_settings()
 
     def build_ui(self):
+        layout = MDBoxLayout(orientation='vertical')
         self.toolbar = MDTopAppBar(title='Настройки')
-        self.add_widget(self.toolbar)
+        layout.add_widget(self.toolbar)
 
         content = MDBoxLayout(orientation='vertical', spacing=20, padding=20, adaptive_height=True)
 
@@ -308,7 +367,9 @@ class SettingsScreen(MDBoxLayout):
 
         scroll = ScrollView(do_scroll_x=False)
         scroll.add_widget(content)
-        self.add_widget(scroll)
+        layout.add_widget(scroll)
+
+        self.add_widget(layout)
 
     def load_settings(self):
         try:
@@ -376,7 +437,7 @@ class SettingsScreen(MDBoxLayout):
 
 
 # -------------------------------------------------------------------
-# Приложение
+# Корневое приложение с нижней навигацией
 # -------------------------------------------------------------------
 class SchoolPassApp(MDApp):
     def build(self):
@@ -386,16 +447,19 @@ class SchoolPassApp(MDApp):
         self.theme_cls.accent_palette = 'LightBlue'
         Window.clearcolor = (0.12, 0.12, 0.12, 1)
 
-        self.main_screen = MainScreen()
-        self.log_screen = LogScreen()
-        self.settings_screen = SettingsScreen()
+        # Создаём экраны и сохраняем ссылки
+        self.main_screen = MainScreen(name='main')
+        self.log_screen = LogScreen(name='log')
+        self.settings_screen = SettingsScreen(name='settings')
 
+        # Нижняя навигация
         self.bottom_nav = MDBottomNavigation(
             panel_color=self.theme_cls.primary_color,
             selected_color_background=self.theme_cls.primary_light,
             text_color_active=(1, 1, 1, 1),
         )
 
+        # Вкладка "Главная"
         main_item = MDBottomNavigationItem(
             name='main',
             text='Главная',
@@ -404,6 +468,7 @@ class SchoolPassApp(MDApp):
         main_item.add_widget(self.main_screen)
         self.bottom_nav.add_widget(main_item)
 
+        # Вкладка "Журнал"
         log_item = MDBottomNavigationItem(
             name='log',
             text='Журнал',
@@ -412,6 +477,7 @@ class SchoolPassApp(MDApp):
         log_item.add_widget(self.log_screen)
         self.bottom_nav.add_widget(log_item)
 
+        # Вкладка "Настройки"
         settings_item = MDBottomNavigationItem(
             name='settings',
             text='Настройки',
