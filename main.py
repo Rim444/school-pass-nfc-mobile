@@ -1,8 +1,8 @@
 """
 School Pass NFC — Финальная версия с дизайном в стиле Сферум
 - Главный экран: карточка профиля, календарь, кнопка "Включить пропуск" (холостая)
-- Экран настроек: ввод ФИО, учебного заведения, выбор должности (ученик/сотрудник), кнопка привязки пропуска
-- Журнал посещений (остаётся без изменений)
+- Экран настроек: ввод ФИО, учебного заведения, выбор должности (ученик/сотрудник) через радио-кнопки, кнопка привязки пропуска
+- Журнал посещений
 - Тёмная тема, синие акценты, иконки как в референсах
 """
 
@@ -26,7 +26,8 @@ from kivymd.uix.dialog import MDDialog
 from kivymd.uix.list import MDList, TwoLineListItem
 from kivy.uix.scrollview import ScrollView
 from kivymd.uix.textfield import MDTextField
-from kivymd.uix.selectioncontrol import MDSwitch, MDRadio
+from kivymd.uix.selectioncontrol import MDSwitch
+from kivymd.uix.radio import MDRadio                      # <-- ИСПРАВЛЕНО
 from kivymd.uix.bottomnavigation import MDBottomNavigation, MDBottomNavigationItem
 from kivymd.uix.toolbar import MDTopAppBar
 from plyer import vibrator
@@ -75,20 +76,16 @@ class MainScreen(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.dialog = None
-        self.pass_enabled = False  # состояние пропуска (включён/выключен)
+        self.pass_enabled = False
         self.build_ui()
         self.load_profile()
 
     def build_ui(self):
         layout = MDBoxLayout(orientation='vertical', spacing=0, padding=0)
 
-        # Верхний toolbar (скрыт или можно оставить, но на скрине его нет, уберём)
-        # self.toolbar = MDTopAppBar(title='School Pass')  # убрали
-
-        # Основной контент
         content = MDBoxLayout(orientation='vertical', spacing=10, padding=15, adaptive_height=True)
 
-        # --- Карточка профиля (как на скрине) ---
+        # --- Карточка профиля ---
         card = MDCard(
             orientation='vertical',
             padding=20,
@@ -101,7 +98,6 @@ class MainScreen(Screen):
         )
 
         from kivymd.uix.label import MDIcon
-        # Аватар (иконка)
         avatar = MDIcon(
             icon='account-circle',
             size_hint=(None, None),
@@ -114,9 +110,8 @@ class MainScreen(Screen):
         avatar.pos_hint = {'center_x': 0.5}
         card.add_widget(avatar)
 
-        # Имя пользователя
         self.name_label = MDLabel(
-            text='Питирим Батурин',  # заглушка
+            text='Питирим Батурин',
             halign='center',
             theme_text_color='Custom',
             text_color=self.get_text_color(),
@@ -126,9 +121,8 @@ class MainScreen(Screen):
         )
         card.add_widget(self.name_label)
 
-        # Должность / роль
         self.role_label = MDLabel(
-            text='Ученик',  # будет загружено
+            text='Ученик',
             halign='center',
             theme_text_color='Custom',
             text_color=self.get_secondary_text_color(),
@@ -140,9 +134,8 @@ class MainScreen(Screen):
 
         content.add_widget(card)
 
-        # --- Календарная строка (дни недели и числа) ---
+        # --- Календарная строка ---
         dates = get_week_dates()
-        # Дни недели
         days_layout = MDBoxLayout(orientation='horizontal', spacing=5, size_hint_y=None, height=30)
         for day in week_days_ru:
             days_layout.add_widget(MDLabel(
@@ -154,14 +147,9 @@ class MainScreen(Screen):
             ))
         content.add_widget(days_layout)
 
-        # Числа
         nums_layout = MDBoxLayout(orientation='horizontal', spacing=5, size_hint_y=None, height=40)
         for d in dates:
-            # выделим текущий день
-            if d == date.today():
-                color = self.get_accent_color()
-            else:
-                color = self.get_text_color()
+            color = self.get_accent_color() if d == date.today() else self.get_text_color()
             nums_layout.add_widget(MDLabel(
                 text=str(d.day),
                 halign='center',
@@ -171,7 +159,7 @@ class MainScreen(Screen):
             ))
         content.add_widget(nums_layout)
 
-        # --- Раздел "Библиотека электронных материалов" (заглушка) ---
+        # --- Библиотека ---
         library_layout = MDBoxLayout(orientation='horizontal', adaptive_height=True, spacing=10)
         library_layout.add_widget(MDLabel(
             text='БИБЛИОТЕКА ЭЛЕКТРОННЫХ МАТЕРИАЛОВ',
@@ -190,7 +178,7 @@ class MainScreen(Screen):
         ))
         content.add_widget(library_layout)
 
-        # --- Кнопка "Включить пропуск" (холостая) ---
+        # --- Кнопка включения пропуска ---
         self.pass_button = MDRaisedButton(
             text='Включить пропуск',
             size_hint=(1, None),
@@ -200,7 +188,7 @@ class MainScreen(Screen):
         )
         content.add_widget(self.pass_button)
 
-        # --- Сообщение об отсутствии уроков (как на скрине) ---
+        # --- Сообщение об отсутствии уроков ---
         content.add_widget(MDLabel(
             text='Уроков и мероприятий нет',
             halign='center',
@@ -229,7 +217,7 @@ class MainScreen(Screen):
     def get_card_bg_color(self):
         app = MDApp.get_running_app()
         if app.theme_cls.theme_style == 'Dark':
-            return (0.15, 0.15, 0.15, 0.95)  # чуть светлее фона
+            return (0.15, 0.15, 0.15, 0.95)
         else:
             return (0.95, 0.95, 0.95, 1)
 
@@ -246,7 +234,7 @@ class MainScreen(Screen):
         return (0.5, 0.5, 0.5, 1) if app.theme_cls.theme_style == 'Dark' else (0.5, 0.5, 0.5, 1)
 
     def get_accent_color(self):
-        return (0.2, 0.6, 0.9, 1)  # синий
+        return (0.2, 0.6, 0.9, 1)
 
     def load_profile(self):
         try:
@@ -255,16 +243,14 @@ class MainScreen(Screen):
                     data = json.load(f)
                     self.name_label.text = data.get('name', 'Питирим Батурин')
                     self.role_label.text = data.get('role', 'Ученик')
-                    # ID карты и другие данные могут быть, но не отображаются на главной
         except:
             pass
 
     def toggle_pass(self, instance):
-        """Переключает состояние пропуска (холостая)"""
         self.pass_enabled = not self.pass_enabled
         if self.pass_enabled:
             self.pass_button.text = 'Выключить пропуск'
-            self.pass_button.md_bg_color = (0.9, 0.2, 0.2, 1)  # красный
+            self.pass_button.md_bg_color = (0.9, 0.2, 0.2, 1)
         else:
             self.pass_button.text = 'Включить пропуск'
             self.pass_button.md_bg_color = self.get_accent_color()
@@ -284,7 +270,7 @@ class MainScreen(Screen):
 
 
 # -------------------------------------------------------------------
-# ЭКРАН ЖУРНАЛА (вкладка "Журнал")
+# ЭКРАН ЖУРНАЛА
 # -------------------------------------------------------------------
 class LogScreen(Screen):
     def __init__(self, **kwargs):
@@ -350,7 +336,7 @@ class LogScreen(Screen):
 
 
 # -------------------------------------------------------------------
-# ЭКРАН НАСТРОЕК (вкладка "Настройки")
+# ЭКРАН НАСТРОЕК
 # -------------------------------------------------------------------
 class SettingsScreen(Screen):
     def __init__(self, **kwargs):
@@ -366,21 +352,19 @@ class SettingsScreen(Screen):
 
         content = MDBoxLayout(orientation='vertical', spacing=15, padding=20, adaptive_height=True)
 
-        # Поле ФИО
         self.name_field = MDTextField(
             hint_text='ФИО',
             size_hint_x=1
         )
         content.add_widget(self.name_field)
 
-        # Поле учебного заведения
         self.school_field = MDTextField(
             hint_text='Учебное заведение',
             size_hint_x=1
         )
         content.add_widget(self.school_field)
 
-        # Выбор должности (ученик/сотрудник) с помощью радио-кнопок
+        # Выбор должности
         role_label = MDLabel(
             text='Должность:',
             theme_text_color='Custom',
@@ -402,7 +386,7 @@ class SettingsScreen(Screen):
         role_box.add_widget(teacher_label)
         content.add_widget(role_box)
 
-        # Кнопка привязки пропуска (эмуляция NFC)
+        # Кнопка привязки пропуска
         btn_bind = MDRaisedButton(
             text='Считать пропуск',
             size_hint=(1, None),
@@ -412,7 +396,6 @@ class SettingsScreen(Screen):
         )
         content.add_widget(btn_bind)
 
-        # Индикатор состояния пропуска (будет обновляться)
         self.pass_status = MDLabel(
             text='Пропуск: не привязан',
             halign='left',
@@ -424,7 +407,7 @@ class SettingsScreen(Screen):
         )
         content.add_widget(self.pass_status)
 
-        # Переключатель темы (уже был)
+        # Переключатель темы
         theme_box = MDBoxLayout(orientation='horizontal', adaptive_height=True, spacing=10)
         theme_box.add_widget(MDLabel(text='Тёмная тема', size_hint_x=0.7))
         self.theme_switch = MDSwitch(size_hint_x=0.3)
@@ -434,7 +417,6 @@ class SettingsScreen(Screen):
         theme_box.add_widget(self.theme_switch)
         content.add_widget(theme_box)
 
-        # Кнопка удаления пропуска
         btn_delete = MDRaisedButton(
             text='Удалить пропуск',
             md_bg_color=(0.8, 0.2, 0.2, 1),
@@ -444,7 +426,6 @@ class SettingsScreen(Screen):
         )
         content.add_widget(btn_delete)
 
-        # Кнопка сохранения
         btn_save = MDRaisedButton(
             text='Сохранить',
             on_release=self.save_settings,
@@ -477,7 +458,6 @@ class SettingsScreen(Screen):
                     data = json.load(f)
                     self.name_field.text = data.get('name', 'Питирим Батурин')
                     self.school_field.text = data.get('school', '')
-                    # Должность
                     role = data.get('role', 'Ученик')
                     if role == 'Ученик':
                         self.student_radio.active = True
@@ -485,7 +465,6 @@ class SettingsScreen(Screen):
                     else:
                         self.student_radio.active = False
                         self.teacher_radio.active = True
-                    # Статус пропуска
                     if 'card_uid' in data:
                         self.pass_status.text = f"Пропуск: привязан ({data['card_uid']})"
                     else:
@@ -509,7 +488,6 @@ class SettingsScreen(Screen):
             with open('settings.json', 'w') as f:
                 json.dump(data, f)
 
-            # Обновляем главный экран
             app = MDApp.get_running_app()
             if app.main_screen:
                 app.main_screen.name_label.text = self.name_field.text
@@ -520,11 +498,9 @@ class SettingsScreen(Screen):
             self.show_dialog(f'Ошибка: {e}')
 
     def bind_pass(self, *args):
-        """Эмуляция привязки пропуска (как раньше)"""
         def simulate():
             time.sleep(2)
             uid = '04:5A:6B:7C:8D:9E'
-            # Сохраняем в настройки
             try:
                 with open('settings.json', 'r') as f:
                     data = json.load(f)
@@ -550,7 +526,6 @@ class SettingsScreen(Screen):
 
     def delete_pass(self, *args):
         try:
-            app = MDApp.get_running_app()
             if os.path.exists('settings.json'):
                 with open('settings.json', 'r') as f:
                     data = json.load(f)
@@ -581,7 +556,7 @@ class SettingsScreen(Screen):
 
 
 # -------------------------------------------------------------------
-# КОРНЕВОЕ ПРИЛОЖЕНИЕ С НИЖНЕЙ НАВИГАЦИЕЙ
+# КОРНЕВОЕ ПРИЛОЖЕНИЕ
 # -------------------------------------------------------------------
 class SchoolPassApp(MDApp):
     def build(self):
@@ -601,7 +576,6 @@ class SchoolPassApp(MDApp):
             text_color_active=(1, 1, 1, 1),
         )
 
-        # Вкладка "Главная" (иконка 'home')
         main_item = MDBottomNavigationItem(
             name='main',
             text='Главная',
@@ -610,7 +584,6 @@ class SchoolPassApp(MDApp):
         main_item.add_widget(self.main_screen)
         self.bottom_nav.add_widget(main_item)
 
-        # Вкладка "Журнал" (иконка 'clipboard-list')
         log_item = MDBottomNavigationItem(
             name='log',
             text='Журнал',
@@ -619,7 +592,6 @@ class SchoolPassApp(MDApp):
         log_item.add_widget(self.log_screen)
         self.bottom_nav.add_widget(log_item)
 
-        # Вкладка "Настройки" (иконка 'cog')
         settings_item = MDBottomNavigationItem(
             name='settings',
             text='Настройки',
