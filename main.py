@@ -1,8 +1,8 @@
 """
-School Pass NFC — Финальная версия с дизайном в стиле Сферум
+School Pass NFC — Версия с реальным считыванием NFC-пропуска
 - Главный экран: карточка профиля, календарь, кнопка "Включить пропуск" (записывает в журнал)
-- Экран настроек: ввод ФИО, учебного заведения, выбор должности (ученик/сотрудник) через радио-кнопки (MDCheckbox), кнопка привязки пропуска
-- Журнал посещений (вкладка)
+- Экран настроек: ввод ФИО, учебного заведения, выбор должности, кнопка "Считать пропуск" (реальное NFC), индикатор статуса
+- Журнал посещений
 - Тёмная тема, синие акценты, иконки как в референсах
 """
 
@@ -340,8 +340,50 @@ class SettingsScreen(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.dialog = None
+        self.nfc_adapter = None
+        self.nfc_pending_intent = None
         self.build_ui()
         self.load_settings()
+        if platform == 'android':
+            self.init_nfc()
+
+    def init_nfc(self):
+        """Инициализация NFC через pyjnius"""
+        try:
+            from jnius import autoclass
+            self.PythonActivity = autoclass('org.kivy.android.PythonActivity')
+            self.NfcAdapter = autoclass('android.nfc.NfcAdapter')
+            self.PendingIntent = autoclass('android.app.PendingIntent')
+            self.Intent = autoclass('android.content.Intent')
+            self.activity = self.PythonActivity.mActivity
+
+            self.nfc_adapter = self.NfcAdapter.getDefaultAdapter(self.activity)
+        except Exception as e:
+            print(f'NFC init error: {e}')
+            self.nfc_adapter = None
+
+    def enable_nfc_foreground(self):
+        """Включаем приём NFC-интентов в foreground"""
+        if self.nfc_adapter is None:
+            return
+        try:
+            intent = self.Intent(self.activity, self.activity.getClass())
+            intent.addFlags(self.Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            self.nfc_pending_intent = self.PendingIntent.getActivity(
+                self.activity, 0, intent,
+                self.PendingIntent.FLAG_UPDATE_CURRENT | self.PendingIntent.FLAG_IMMUTABLE
+            )
+            self.nfc_adapter.enableForegroundDispatch(
+                self.activity, self.nfc_pending_intent, None, None)
+        except Exception as e:
+            print(f'Enable foreground error: {e}')
+
+    def disable_nfc_foreground(self):
+        if self.nfc_adapter and hasattr(self, 'nfc_pending_intent'):
+            try:
+                self.nfc_adapter.disableForegroundDispatch(self.activity)
+            except Exception as e:
+                print(f'Disable foreground error: {e}')
 
     def build_ui(self):
         layout = MDBoxLayout(orientation='vertical')
@@ -362,7 +404,7 @@ class SettingsScreen(Screen):
         )
         content.add_widget(self.school_field)
 
-        # Выбор должности (радио-кнопки с подписями)
+        # Выбор должности
         role_label = MDLabel(
             text='Должность:',
             theme_text_color='Custom',
@@ -373,7 +415,6 @@ class SettingsScreen(Screen):
         content.add_widget(role_label)
 
         role_box = MDBoxLayout(orientation='horizontal', adaptive_height=True, spacing=20, padding=[0,0,0,0])
-        # Устанавливаем размеры для правильного отображения
         self.student_radio = MDCheckbox(group='role', size_hint=(None, None), size=(48, 48))
         student_label = MDLabel(text='Ученик', size_hint_x=0.4, halign='left')
         self.teacher_radio = MDCheckbox(group='role', size_hint=(None, None), size=(48, 48))
@@ -385,7 +426,7 @@ class SettingsScreen(Screen):
         role_box.add_widget(teacher_label)
         content.add_widget(role_box)
 
-        # Кнопка привязки пропуска
+        # Кнопка привязки пропуска (реальное NFC)
         btn_bind = MDRaisedButton(
             text='Считать пропуск',
             size_hint=(1, None),
@@ -497,27 +538,60 @@ class SettingsScreen(Screen):
             self.show_dialog('Ошибка', f'Не удалось сохранить: {e}')
 
     def bind_pass(self, *args):
-        def simulate():
-            time.sleep(2)
-            uid = '04:5A:6B:7C:8D:9E'
+        if platform != 'android':
+            self.show_dialog('NFC недоступен', 'Функция работает только на Android')
+            return
+
+        if self.nfc_adapter is None:
+            self.show_dialog('Ошибка NFC', 'NFC не поддерживается на устройстве')
+            return
+
+        if not self.nfc_adapter.isEnabled():
+            # Можно предложить открыть настройки NFC
+            self.show_dialog('NFC выключен', 'Пожалуйста, включите NFC в настройках')
+            # Попытка открыть настройки NFC:
+            # Intent = autoclass('android.content.Intent')
+            # settings_intent = Intent(android.provider.Settings.ACTION_NFC_SETTINGS)
+            # self.activity.startActivity(settings_intent)
+            return
+
+        # Активируем foreground dispatch для получения уведомлений о метках
+        self.enable_nfc_foreground()
+        self.show_dialog('Сканирование', 'Поднесите карту к NFC...')
+        # Устанавливаем флаг, что мы ждём карту
+        app = MDApp.get_running_app()
+        app.waiting_for_card = True
+        app.card_callback = self.on_nfc_tag
+
+    def on_nfc_tag(self, tag):
+        """Обработчик, вызываемый при обнаружении метки (из главной активности)"""
+        try:
+            # Получаем UID метки
+            uid_bytes = tag.getId()
+            uid = ''.join(f'{b:02X}' for b in uid_bytes)
+            uid_formatted = ':'.join(uid[i:i+2] for i in range(0, len(uid), 2))
+
+            # Сохраняем в настройки
             try:
                 with open('settings.json', 'r') as f:
                     data = json.load(f)
             except:
                 data = {}
-            data['card_uid'] = uid
+            data['card_uid'] = uid_formatted
             with open('settings.json', 'w') as f:
                 json.dump(data, f)
 
-            Clock.schedule_once(lambda dt: self.update_pass_status(uid))
+            Clock.schedule_once(lambda dt: self.update_pass_status(uid_formatted))
             if platform == 'android':
                 try:
                     vibrator.vibrate(0.1)
                 except:
                     pass
 
-        self.show_dialog('Сканирование', 'Поднесите карту к NFC...')
-        threading.Thread(target=simulate).start()
+            # Отключаем foreground dispatch
+            self.disable_nfc_foreground()
+        except Exception as e:
+            Clock.schedule_once(lambda dt: self.show_dialog('Ошибка', f'Не удалось считать карту: {e}'))
 
     def update_pass_status(self, uid):
         self.pass_status.text = f"Пропуск: привязан ({uid})"
@@ -568,6 +642,12 @@ class SchoolPassApp(MDApp):
         self.main_screen = MainScreen(name='main')
         self.log_screen = LogScreen(name='log')
         self.settings_screen = SettingsScreen(name='settings')
+        self.waiting_for_card = False
+        self.card_callback = None
+
+        if platform == 'android':
+            from android import activity
+            activity.bind(on_new_intent=self.on_new_intent)
 
         self.bottom_nav = MDBottomNavigation(
             panel_color=self.theme_cls.primary_color,
@@ -600,6 +680,30 @@ class SchoolPassApp(MDApp):
         self.bottom_nav.add_widget(settings_item)
 
         return self.bottom_nav
+
+    def on_new_intent(self, intent):
+        """Обработка входящих интентов (для NFC)"""
+        if not self.waiting_for_card:
+            return
+        if platform != 'android':
+            return
+        try:
+            from jnius import autoclass
+            NfcAdapter = autoclass('android.nfc.NfcAdapter')
+            Tag = autoclass('android.nfc.Tag')
+            action = intent.getAction()
+            if NfcAdapter.ACTION_TAG_DISCOVERED == action or \
+               NfcAdapter.ACTION_TECH_DISCOVERED == action or \
+               NfcAdapter.ACTION_NDEF_DISCOVERED == action:
+                tag = intent.getParcelableExtra(NfcAdapter.EXTRA_TAG)
+                if tag and self.card_callback:
+                    self.card_callback(tag)
+                    self.waiting_for_card = False
+                    self.card_callback = None
+        except Exception as e:
+            print(f'NFC intent error: {e}')
+            self.waiting_for_card = False
+            self.card_callback = None
 
 
 if __name__ == '__main__':
