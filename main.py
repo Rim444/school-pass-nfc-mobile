@@ -1,7 +1,7 @@
 """
 School Pass NFC — Финальная версия с дизайном в стиле Сферум
 - Главный экран: карточка профиля, календарь, кнопка "Включить пропуск" (холостая)
-- Экран настроек: ввод ФИО, учебного заведения, выбор должности (ученик/сотрудник) через радио-кнопки, кнопка привязки пропуска
+- Экран настроек: ввод ФИО, учебного заведения, выбор должности (ученик/сотрудник) через радио-кнопки (MDCheckbox), кнопка привязки пропуска
 - Журнал посещений
 - Тёмная тема, синие акценты, иконки как в референсах
 """
@@ -26,8 +26,7 @@ from kivymd.uix.dialog import MDDialog
 from kivymd.uix.list import MDList, TwoLineListItem
 from kivy.uix.scrollview import ScrollView
 from kivymd.uix.textfield import MDTextField
-from kivymd.uix.selectioncontrol import MDSwitch
-from kivymd.uix.radio import MDRadio                      # <-- ИСПРАВЛЕНО
+from kivymd.uix.selectioncontrol import MDSwitch, MDCheckbox   # <-- ИСПРАВЛЕНО
 from kivymd.uix.bottomnavigation import MDBottomNavigation, MDBottomNavigationItem
 from kivymd.uix.toolbar import MDTopAppBar
 from plyer import vibrator
@@ -375,9 +374,9 @@ class SettingsScreen(Screen):
         content.add_widget(role_label)
 
         role_box = MDBoxLayout(orientation='horizontal', adaptive_height=True, spacing=10)
-        self.student_radio = MDRadio(group='role')
+        self.student_radio = MDCheckbox(group='role')
         student_label = MDLabel(text='Ученик', size_hint_x=0.3)
-        self.teacher_radio = MDRadio(group='role')
+        self.teacher_radio = MDCheckbox(group='role')
         teacher_label = MDLabel(text='Сотрудник', size_hint_x=0.3)
 
         role_box.add_widget(self.student_radio)
