@@ -8,7 +8,7 @@ source.include_exts = py,png,jpg,kv,atlas
 source.exclude_dirs = tests, bin, .buildozer, .github, __pycache__, *.pyc
 
 version = 1.0.0
-requirements = python3,kivy==2.2.1,kivymd==1.2.0,plyer
+requirements = python3,kivy==2.2.1,kivymd==1.2.0,plyer,pyjnius
 
 orientation = portrait
 fullscreen = 0
