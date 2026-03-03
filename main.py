@@ -1,8 +1,8 @@
 """
 School Pass NFC — Финальная версия с дизайном в стиле Сферум
-- Главный экран: карточка профиля, календарь, кнопка "Включить пропуск" (холостая)
+- Главный экран: карточка профиля, календарь, кнопка "Включить пропуск" (записывает в журнал)
 - Экран настроек: ввод ФИО, учебного заведения, выбор должности (ученик/сотрудник) через радио-кнопки (MDCheckbox), кнопка привязки пропуска
-- Журнал посещений
+- Журнал посещений (вкладка)
 - Тёмная тема, синие акценты, иконки как в референсах
 """
 
@@ -26,7 +26,7 @@ from kivymd.uix.dialog import MDDialog
 from kivymd.uix.list import MDList, TwoLineListItem
 from kivy.uix.scrollview import ScrollView
 from kivymd.uix.textfield import MDTextField
-from kivymd.uix.selectioncontrol import MDSwitch, MDCheckbox   # <-- ИСПРАВЛЕНО
+from kivymd.uix.selectioncontrol import MDSwitch, MDCheckbox
 from kivymd.uix.bottomnavigation import MDBottomNavigation, MDBottomNavigationItem
 from kivymd.uix.toolbar import MDTopAppBar
 from plyer import vibrator
@@ -76,6 +76,7 @@ class MainScreen(Screen):
         super().__init__(**kwargs)
         self.dialog = None
         self.pass_enabled = False
+        self.last_event_time = None  # для чередования Вход/Выход
         self.build_ui()
         self.load_profile()
 
@@ -158,26 +159,7 @@ class MainScreen(Screen):
             ))
         content.add_widget(nums_layout)
 
-        # --- Библиотека ---
-        library_layout = MDBoxLayout(orientation='horizontal', adaptive_height=True, spacing=10)
-        library_layout.add_widget(MDLabel(
-            text='БИБЛИОТЕКА ЭЛЕКТРОННЫХ МАТЕРИАЛОВ',
-            halign='left',
-            theme_text_color='Custom',
-            text_color=self.get_secondary_text_color(),
-            font_style='Caption',
-            size_hint_x=0.7
-        ))
-        library_layout.add_widget(MDRaisedButton(
-            text='ПОДРОБНЕЕ',
-            size_hint_x=0.3,
-            height=30,
-            md_bg_color=self.get_accent_color(),
-            on_release=lambda x: self.show_dialog('Подробнее', 'Раздел в разработке')
-        ))
-        content.add_widget(library_layout)
-
-        # --- Кнопка включения пропуска ---
+        # --- Кнопка включения пропуска (записывает в журнал) ---
         self.pass_button = MDRaisedButton(
             text='Включить пропуск',
             size_hint=(1, None),
@@ -246,6 +228,22 @@ class MainScreen(Screen):
             pass
 
     def toggle_pass(self, instance):
+        # Чередование Вход/Выход
+        now = datetime.now()
+        time_str = now.strftime('%d.%m.%Y %H:%M')
+        if self.last_event_time is None or self.last_event_time == 'exit':
+            event_type = 'Вход'
+            self.last_event_time = 'entry'
+        else:
+            event_type = 'Выход'
+            self.last_event_time = 'exit'
+
+        # Добавляем запись в журнал
+        app = MDApp.get_running_app()
+        if app.log_screen:
+            app.log_screen.add_entry(event_type, time_str)
+
+        # Меняем состояние кнопки (просто для визуала)
         self.pass_enabled = not self.pass_enabled
         if self.pass_enabled:
             self.pass_button.text = 'Выключить пропуск'
@@ -253,7 +251,8 @@ class MainScreen(Screen):
         else:
             self.pass_button.text = 'Включить пропуск'
             self.pass_button.md_bg_color = self.get_accent_color()
-        self.show_dialog('Пропуск', 'Включён' if self.pass_enabled else 'Выключен')
+
+        self.show_dialog('Пропуск', f'{event_type} зафиксирован в {time_str}')
 
     def show_dialog(self, title, text):
         if not self.dialog:
@@ -363,7 +362,7 @@ class SettingsScreen(Screen):
         )
         content.add_widget(self.school_field)
 
-        # Выбор должности
+        # Выбор должности (радио-кнопки с подписями)
         role_label = MDLabel(
             text='Должность:',
             theme_text_color='Custom',
@@ -373,11 +372,12 @@ class SettingsScreen(Screen):
         )
         content.add_widget(role_label)
 
-        role_box = MDBoxLayout(orientation='horizontal', adaptive_height=True, spacing=10)
-        self.student_radio = MDCheckbox(group='role')
-        student_label = MDLabel(text='Ученик', size_hint_x=0.3)
-        self.teacher_radio = MDCheckbox(group='role')
-        teacher_label = MDLabel(text='Сотрудник', size_hint_x=0.3)
+        role_box = MDBoxLayout(orientation='horizontal', adaptive_height=True, spacing=20, padding=[0,0,0,0])
+        # Устанавливаем размеры для правильного отображения
+        self.student_radio = MDCheckbox(group='role', size_hint=(None, None), size=(48, 48))
+        student_label = MDLabel(text='Ученик', size_hint_x=0.4, halign='left')
+        self.teacher_radio = MDCheckbox(group='role', size_hint=(None, None), size=(48, 48))
+        teacher_label = MDLabel(text='Сотрудник', size_hint_x=0.4, halign='left')
 
         role_box.add_widget(self.student_radio)
         role_box.add_widget(student_label)
@@ -492,9 +492,9 @@ class SettingsScreen(Screen):
                 app.main_screen.name_label.text = self.name_field.text
                 app.main_screen.role_label.text = data['role']
 
-            self.show_dialog('Настройки сохранены')
+            self.show_dialog('Настройки сохранены', 'Данные обновлены')
         except Exception as e:
-            self.show_dialog(f'Ошибка: {e}')
+            self.show_dialog('Ошибка', f'Не удалось сохранить: {e}')
 
     def bind_pass(self, *args):
         def simulate():
@@ -533,9 +533,9 @@ class SettingsScreen(Screen):
                     with open('settings.json', 'w') as f:
                         json.dump(data, f)
             self.pass_status.text = 'Пропуск: не привязан'
-            self.show_dialog('Пропуск удалён')
+            self.show_dialog('Пропуск удалён', 'Карта отвязана')
         except Exception as e:
-            self.show_dialog(f'Ошибка: {e}')
+            self.show_dialog('Ошибка', f'Не удалось удалить: {e}')
 
     def on_theme_switch(self, switch, active):
         app = MDApp.get_running_app()
