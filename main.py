@@ -1,6 +1,6 @@
 """
 School Pass NFC — Версия с выбором класса через выпадающие списки и тестовым расписанием
-(исправлена ошибка вызова несуществующего метода update_scroll)
+(исправлено отображение расписания)
 """
 
 import json
@@ -258,9 +258,14 @@ class MainScreen(Screen):
     def update_schedule(self, class_name):
         """Обновляет расписание для указанного класса на текущий день"""
         try:
+            if not class_name:
+                self.clear_schedule()
+                return
+
             weekday = date.today().weekday()
             lessons = SCHEDULE.get(class_name, {}).get(weekday, [])
             self.clear_schedule()
+
             if lessons:
                 for lesson in lessons:
                     item = OneLineListItem(
@@ -281,9 +286,12 @@ class MainScreen(Screen):
 
             # Принудительное обновление интерфейса
             Clock.schedule_once(lambda dt: self.schedule_list.do_layout(), 0)
+            # Небольшая задержка, чтобы ScrollView успел пересчитать размеры
+            Clock.schedule_once(lambda dt: setattr(self.schedule_scroll, 'scroll_y', 1), 0.1)
         except Exception as e:
             print(f"Ошибка обновления расписания: {e}")
             traceback.print_exc()
+            self.show_dialog('Ошибка', f'Не удалось загрузить расписание: {e}')
 
     def clear_schedule(self):
         try:
@@ -677,7 +685,6 @@ class SettingsScreen(Screen):
                         # Загружаем сохранённый класс
                         saved_class = data.get('class', '')
                         if saved_class and isinstance(saved_class, str) and len(saved_class) >= 2:
-                            # Пытаемся разобрать
                             grade_str = saved_class[:-1]
                             letter = saved_class[-1]
                             if grade_str.isdigit() and 5 <= int(grade_str) <= 11:
@@ -700,7 +707,6 @@ class SettingsScreen(Screen):
         except Exception as e:
             print(f"Ошибка загрузки настроек: {e}")
             traceback.print_exc()
-            # Сброс к значениям по умолчанию
             self.name_field.text = 'Питирим Батурин'
             self.school_field.text = ''
             self.student_radio.active = True
