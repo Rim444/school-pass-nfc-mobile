@@ -1,5 +1,5 @@
 """
-School Pass NFC — Версия с расписанием и выбором класса
+School Pass NFC — Версия с выбором класса через выпадающие списки и тестовым расписанием
 """
 
 import json
@@ -25,6 +25,7 @@ from kivymd.uix.textfield import MDTextField
 from kivymd.uix.selectioncontrol import MDSwitch, MDCheckbox
 from kivymd.uix.bottomnavigation import MDBottomNavigation, MDBottomNavigationItem
 from kivymd.uix.toolbar import MDTopAppBar
+from kivymd.uix.menu import MDDropdownMenu
 from plyer import vibrator
 
 # ================================================================
@@ -55,29 +56,30 @@ if platform != 'android':
 Window.softinput_mode = 'pan'
 
 # -------------------------------------------------------------------
-# СТАТИЧЕСКОЕ РАСПИСАНИЕ (ПРИМЕР)
+# ФУНКЦИИ ДЛЯ ГЕНЕРАЦИИ ТЕСТОВОГО РАСПИСАНИЯ
 # -------------------------------------------------------------------
-SCHEDULE = {
-    '11А': {
-        0: ['Математика', 'Русский язык', 'Физика', 'Информатика', 'Английский язык'],
-        1: ['Литература', 'Алгебра', 'Химия', 'Биология', 'История'],
-        2: ['Геометрия', 'Русский язык', 'Физика', 'ОБЖ', 'Английский язык'],
-        3: ['Математика', 'Литература', 'Химия', 'Информатика', 'Физическая культура'],
-        4: ['Алгебра', 'Русский язык', 'Биология', 'История', 'Обществознание'],
-        5: [],  # суббота
-        6: []   # воскресенье
-    },
-    '10Б': {
-        0: ['Алгебра', 'Русский язык', 'Физика', 'Информатика', 'Английский язык'],
-        1: ['Геометрия', 'Литература', 'Химия', 'Биология', 'История'],
-        2: ['Математика', 'Русский язык', 'Физика', 'ОБЖ', 'Английский язык'],
-        3: ['Алгебра', 'Литература', 'Химия', 'Информатика', 'Физическая культура'],
-        4: ['Геометрия', 'Русский язык', 'Биология', 'История', 'Обществознание'],
-        5: [],
-        6: []
-    },
-    # можно добавить другие классы
-}
+def generate_schedule_for_all_classes():
+    """
+    Генерирует тестовое расписание для всех классов.
+    Каждый класс получает одинаковое расписание: каждый день 7 уроков "Информатика".
+    """
+    days = range(7)  # 0=пн, 6=вс
+    lessons = ['Информатика'] * 7
+    schedule = {}
+    # Параллели 5-9 с буквами А-Д
+    for grade in range(5, 10):
+        for letter in ['А', 'Б', 'В', 'Г', 'Д']:
+            class_name = f"{grade}{letter}"
+            schedule[class_name] = {day: lessons.copy() for day in days}
+    # Параллели 10-11 с буквами А-В
+    for grade in range(10, 12):
+        for letter in ['А', 'Б', 'В']:
+            class_name = f"{grade}{letter}"
+            schedule[class_name] = {day: lessons.copy() for day in days}
+    return schedule
+
+# Генерируем словарь расписания один раз при старте
+SCHEDULE = generate_schedule_for_all_classes()
 
 # -------------------------------------------------------------------
 # ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ КАЛЕНДАРЯ
@@ -208,9 +210,6 @@ class MainScreen(Screen):
         self.schedule_scroll.add_widget(self.schedule_list)
         content.add_widget(self.schedule_scroll)
 
-        # --- Сообщение об отсутствии уроков (заменено расписанием, но оставим на случай) ---
-        # content.add_widget(MDLabel(text='Уроков и мероприятий нет', ...))  // можно удалить
-
         scroll = ScrollView(do_scroll_x=False)
         scroll.add_widget(content)
         layout.add_widget(scroll)
@@ -246,7 +245,7 @@ class MainScreen(Screen):
                     data = json.load(f)
                     self.name_label.text = data.get('name', 'Питирим Батурин')
                     self.role_label.text = data.get('role', 'Ученик')
-                    # Обновляем расписание, если класс есть и роль ученик
+                    # Обновляем расписание, если роль ученик и класс сохранён
                     if data.get('role') == 'Ученик' and 'class' in data:
                         self.update_schedule(data['class'])
                     else:
@@ -395,6 +394,10 @@ class SettingsScreen(Screen):
         self.dialog = None
         self.nfc_adapter = None
         self.nfc_pending_intent = None
+        self.grade_menu = None
+        self.letter_menu = None
+        self.selected_grade = None  # выбранная параллель (число)
+        self.selected_letter = None  # выбранная буква
         self.build_ui()
         self.load_settings()
         if platform == 'android':
@@ -477,15 +480,33 @@ class SettingsScreen(Screen):
         role_box.add_widget(teacher_label)
         content.add_widget(role_box)
 
-        # Поле для класса (показываем только для учеников)
-        self.class_field = MDTextField(
-            hint_text='Класс (например, 11А)',
-            size_hint_x=1
+        # --- Блок выбора класса (появляется только для учеников) ---
+        self.class_selection_box = MDBoxLayout(orientation='vertical', spacing=10, size_hint_y=None, height=100)
+        self.class_selection_box.opacity = 0
+        self.class_selection_box.disabled = True
+
+        # Кнопка для выбора параллели
+        self.grade_button = MDRaisedButton(
+            text='Параллель',
+            size_hint=(1, None),
+            height=48,
+            md_bg_color=self.get_accent_color(),
+            on_release=self.show_grade_menu
         )
-        # Изначально скрыто
-        self.class_field.opacity = 0
-        self.class_field.disabled = True
-        content.add_widget(self.class_field)
+        self.class_selection_box.add_widget(self.grade_button)
+
+        # Кнопка для выбора буквы
+        self.letter_button = MDRaisedButton(
+            text='Буква',
+            size_hint=(1, None),
+            height=48,
+            md_bg_color=self.get_accent_color(),
+            on_release=self.show_letter_menu,
+            disabled=True
+        )
+        self.class_selection_box.add_widget(self.letter_button)
+
+        content.add_widget(self.class_selection_box)
 
         # Привяжем обработчики для радио-кнопок
         self.student_radio.bind(active=self.on_role_changed)
@@ -546,13 +567,75 @@ class SettingsScreen(Screen):
         self.add_widget(layout)
 
     def on_role_changed(self, checkbox, value):
-        """Показываем поле класса, если выбрана роль 'Ученик'"""
+        """Показываем блок выбора класса, если выбрана роль 'Ученик'"""
         if checkbox == self.student_radio and value:
-            self.class_field.opacity = 1
-            self.class_field.disabled = False
+            self.class_selection_box.opacity = 1
+            self.class_selection_box.disabled = False
         elif checkbox == self.teacher_radio and value:
-            self.class_field.opacity = 0
-            self.class_field.disabled = True
+            self.class_selection_box.opacity = 0
+            self.class_selection_box.disabled = True
+
+    def show_grade_menu(self, button):
+        """Показывает выпадающее меню для выбора параллели (5-11)"""
+        grade_items = [
+            {"text": f"{i}", "viewclass": "OneLineListItem", "on_release": lambda x=f"{i}": self.set_grade(x)}
+            for i in range(5, 12)
+        ]
+        self.grade_menu = MDDropdownMenu(
+            caller=button,
+            items=grade_items,
+            width_mult=2,
+        )
+        self.grade_menu.open()
+
+    def set_grade(self, grade_str):
+        """Устанавливает выбранную параллель и обновляет кнопку"""
+        self.selected_grade = grade_str
+        self.grade_button.text = f"{grade_str} класс"
+        self.grade_menu.dismiss()
+        # Активируем кнопку выбора буквы и обновляем её меню
+        self.letter_button.disabled = False
+        self.update_letter_menu()
+        # Сбрасываем выбор буквы
+        self.selected_letter = None
+        self.letter_button.text = 'Буква'
+
+    def update_letter_menu(self):
+        """Формирует список букв для выбранной параллели"""
+        grade = int(self.selected_grade) if self.selected_grade else 0
+        if 5 <= grade <= 9:
+            letters = ['А', 'Б', 'В', 'Г', 'Д']
+        elif grade in (10, 11):
+            letters = ['А', 'Б', 'В']
+        else:
+            letters = []
+        self.letter_items = [
+            {"text": letter, "viewclass": "OneLineListItem", "on_release": lambda x=letter: self.set_letter(x)}
+            for letter in letters
+        ]
+
+    def show_letter_menu(self, button):
+        """Показывает выпадающее меню для выбора буквы"""
+        if not hasattr(self, 'letter_items') or not self.letter_items:
+            return
+        self.letter_menu = MDDropdownMenu(
+            caller=button,
+            items=self.letter_items,
+            width_mult=2,
+        )
+        self.letter_menu.open()
+
+    def set_letter(self, letter):
+        """Устанавливает выбранную букву и обновляет кнопку"""
+        self.selected_letter = letter
+        self.letter_button.text = letter
+        self.letter_menu.dismiss()
+
+    def get_selected_class(self):
+        """Возвращает строку класса (например, '11А') или None"""
+        if self.selected_grade and self.selected_letter:
+            return f"{self.selected_grade}{self.selected_letter}"
+        return None
 
     def get_text_color(self):
         app = MDApp.get_running_app()
@@ -576,14 +659,27 @@ class SettingsScreen(Screen):
                     if role == 'Ученик':
                         self.student_radio.active = True
                         self.teacher_radio.active = False
-                        self.class_field.opacity = 1
-                        self.class_field.disabled = False
+                        self.class_selection_box.opacity = 1
+                        self.class_selection_box.disabled = False
+                        # Загружаем сохранённый класс
+                        saved_class = data.get('class', '')
+                        if saved_class and len(saved_class) >= 2:
+                            # Пытаемся разобрать
+                            grade_str = saved_class[:-1]
+                            letter = saved_class[-1]
+                            if grade_str.isdigit() and 5 <= int(grade_str) <= 11:
+                                self.selected_grade = grade_str
+                                self.grade_button.text = f"{grade_str} класс"
+                                self.update_letter_menu()
+                                self.selected_letter = letter
+                                self.letter_button.text = letter
+                                self.letter_button.disabled = False
                     else:
                         self.student_radio.active = False
                         self.teacher_radio.active = True
-                        self.class_field.opacity = 0
-                        self.class_field.disabled = True
-                    self.class_field.text = data.get('class', '')
+                        self.class_selection_box.opacity = 0
+                        self.class_selection_box.disabled = True
+
                     if 'card_uid' in data:
                         self.pass_status.text = f"Пропуск: привязан ({data['card_uid']})"
                     else:
@@ -592,9 +688,9 @@ class SettingsScreen(Screen):
             self.name_field.text = 'Питирим Батурин'
             self.school_field.text = ''
             self.student_radio.active = True
-            self.class_field.text = ''
-            self.class_field.opacity = 1
-            self.class_field.disabled = False
+            self.teacher_radio.active = False
+            self.class_selection_box.opacity = 1
+            self.class_selection_box.disabled = False
 
     def save_settings(self, *args):
         try:
@@ -606,7 +702,16 @@ class SettingsScreen(Screen):
             data['name'] = self.name_field.text
             data['school'] = self.school_field.text
             data['role'] = 'Ученик' if self.student_radio.active else 'Сотрудник'
-            data['class'] = self.class_field.text
+            # Сохраняем класс, если роль ученик и выбран
+            if self.student_radio.active:
+                selected_class = self.get_selected_class()
+                if selected_class:
+                    data['class'] = selected_class
+                elif 'class' in data:
+                    del data['class']
+            else:
+                if 'class' in data:
+                    del data['class']
 
             with open('settings.json', 'w') as f:
                 json.dump(data, f)
@@ -615,8 +720,8 @@ class SettingsScreen(Screen):
             if app.main_screen:
                 app.main_screen.name_label.text = self.name_field.text
                 app.main_screen.role_label.text = data['role']
-                # Обновляем расписание, если роль ученик и класс указан
-                if data['role'] == 'Ученик' and data['class']:
+                # Обновляем расписание, если роль ученик и класс сохранён
+                if data['role'] == 'Ученик' and 'class' in data:
                     app.main_screen.update_schedule(data['class'])
                 else:
                     app.main_screen.clear_schedule()
