@@ -276,8 +276,15 @@ class MainScreen(Screen):
             )
             self.schedule_list.add_widget(item)
 
+        # Принудительное обновление интерфейса
+        Clock.schedule_once(lambda dt: self.schedule_list.do_layout(), 0)
+        Clock.schedule_once(lambda dt: self.schedule_scroll.update_scroll(), 0.1)
+
     def clear_schedule(self):
         self.schedule_list.clear_widgets()
+        # После очистки тоже обновляем
+        Clock.schedule_once(lambda dt: self.schedule_list.do_layout(), 0)
+        Clock.schedule_once(lambda dt: self.schedule_scroll.update_scroll(), 0.1)
 
     def toggle_pass(self, instance):
         # Чередование Вход/Выход
