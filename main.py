@@ -1,6 +1,6 @@
 """
 School Pass NFC — Версия с выбором класса через выпадающие списки и тестовым расписанием
-(исправлена ошибка сохранения/загрузки класса)
+(исправлена ошибка вызова несуществующего метода update_scroll)
 """
 
 import json
@@ -281,7 +281,6 @@ class MainScreen(Screen):
 
             # Принудительное обновление интерфейса
             Clock.schedule_once(lambda dt: self.schedule_list.do_layout(), 0)
-            Clock.schedule_once(lambda dt: self.schedule_scroll.update_scroll(), 0.1)
         except Exception as e:
             print(f"Ошибка обновления расписания: {e}")
             traceback.print_exc()
@@ -290,7 +289,6 @@ class MainScreen(Screen):
         try:
             self.schedule_list.clear_widgets()
             Clock.schedule_once(lambda dt: self.schedule_list.do_layout(), 0)
-            Clock.schedule_once(lambda dt: self.schedule_scroll.update_scroll(), 0.1)
         except Exception as e:
             print(f"Ошибка очистки расписания: {e}")
 
