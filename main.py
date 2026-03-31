@@ -1,5 +1,6 @@
 """
 School Pass NFC — Версия с выбором класса через выпадающие списки и тестовым расписанием
+(исправлена ошибка сохранения/загрузки класса)
 """
 
 import json
@@ -246,45 +247,52 @@ class MainScreen(Screen):
                     self.name_label.text = data.get('name', 'Питирим Батурин')
                     self.role_label.text = data.get('role', 'Ученик')
                     # Обновляем расписание, если роль ученик и класс сохранён
-                    if data.get('role') == 'Ученик' and 'class' in data:
+                    if data.get('role') == 'Ученик' and 'class' in data and data['class']:
                         self.update_schedule(data['class'])
                     else:
                         self.clear_schedule()
-        except:
-            pass
+        except Exception as e:
+            print(f"Ошибка загрузки профиля: {e}")
+            traceback.print_exc()
 
     def update_schedule(self, class_name):
         """Обновляет расписание для указанного класса на текущий день"""
-        weekday = date.today().weekday()
-        lessons = SCHEDULE.get(class_name, {}).get(weekday, [])
-        self.clear_schedule()
-        if lessons:
-            for lesson in lessons:
+        try:
+            weekday = date.today().weekday()
+            lessons = SCHEDULE.get(class_name, {}).get(weekday, [])
+            self.clear_schedule()
+            if lessons:
+                for lesson in lessons:
+                    item = OneLineListItem(
+                        text=lesson,
+                        divider='Full',
+                        theme_text_color='Custom',
+                        text_color=self.get_text_color()
+                    )
+                    self.schedule_list.add_widget(item)
+            else:
                 item = OneLineListItem(
-                    text=lesson,
+                    text='Уроков нет',
                     divider='Full',
                     theme_text_color='Custom',
-                    text_color=self.get_text_color()
+                    text_color=self.get_hint_text_color()
                 )
                 self.schedule_list.add_widget(item)
-        else:
-            item = OneLineListItem(
-                text='Уроков нет',
-                divider='Full',
-                theme_text_color='Custom',
-                text_color=self.get_hint_text_color()
-            )
-            self.schedule_list.add_widget(item)
 
-        # Принудительное обновление интерфейса
-        Clock.schedule_once(lambda dt: self.schedule_list.do_layout(), 0)
-        Clock.schedule_once(lambda dt: self.schedule_scroll.update_scroll(), 0.1)
+            # Принудительное обновление интерфейса
+            Clock.schedule_once(lambda dt: self.schedule_list.do_layout(), 0)
+            Clock.schedule_once(lambda dt: self.schedule_scroll.update_scroll(), 0.1)
+        except Exception as e:
+            print(f"Ошибка обновления расписания: {e}")
+            traceback.print_exc()
 
     def clear_schedule(self):
-        self.schedule_list.clear_widgets()
-        # После очистки тоже обновляем
-        Clock.schedule_once(lambda dt: self.schedule_list.do_layout(), 0)
-        Clock.schedule_once(lambda dt: self.schedule_scroll.update_scroll(), 0.1)
+        try:
+            self.schedule_list.clear_widgets()
+            Clock.schedule_once(lambda dt: self.schedule_list.do_layout(), 0)
+            Clock.schedule_once(lambda dt: self.schedule_scroll.update_scroll(), 0.1)
+        except Exception as e:
+            print(f"Ошибка очистки расписания: {e}")
 
     def toggle_pass(self, instance):
         # Чередование Вход/Выход
@@ -670,7 +678,7 @@ class SettingsScreen(Screen):
                         self.class_selection_box.disabled = False
                         # Загружаем сохранённый класс
                         saved_class = data.get('class', '')
-                        if saved_class and len(saved_class) >= 2:
+                        if saved_class and isinstance(saved_class, str) and len(saved_class) >= 2:
                             # Пытаемся разобрать
                             grade_str = saved_class[:-1]
                             letter = saved_class[-1]
@@ -691,13 +699,21 @@ class SettingsScreen(Screen):
                         self.pass_status.text = f"Пропуск: привязан ({data['card_uid']})"
                     else:
                         self.pass_status.text = 'Пропуск: не привязан'
-        except:
+        except Exception as e:
+            print(f"Ошибка загрузки настроек: {e}")
+            traceback.print_exc()
+            # Сброс к значениям по умолчанию
             self.name_field.text = 'Питирим Батурин'
             self.school_field.text = ''
             self.student_radio.active = True
             self.teacher_radio.active = False
             self.class_selection_box.opacity = 1
             self.class_selection_box.disabled = False
+            self.selected_grade = None
+            self.selected_letter = None
+            self.grade_button.text = 'Параллель'
+            self.letter_button.text = 'Буква'
+            self.letter_button.disabled = True
 
     def save_settings(self, *args):
         try:
@@ -728,13 +744,15 @@ class SettingsScreen(Screen):
                 app.main_screen.name_label.text = self.name_field.text
                 app.main_screen.role_label.text = data['role']
                 # Обновляем расписание, если роль ученик и класс сохранён
-                if data['role'] == 'Ученик' and 'class' in data:
+                if data['role'] == 'Ученик' and 'class' in data and data['class']:
                     app.main_screen.update_schedule(data['class'])
                 else:
                     app.main_screen.clear_schedule()
 
             self.show_dialog('Настройки сохранены', 'Данные обновлены')
         except Exception as e:
+            print(f"Ошибка сохранения настроек: {e}")
+            traceback.print_exc()
             self.show_dialog('Ошибка', f'Не удалось сохранить: {e}')
 
     def bind_pass(self, *args):
