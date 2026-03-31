@@ -1,9 +1,5 @@
 """
-School Pass NFC — Версия с реальным считыванием NFC-пропуска
-- Главный экран: карточка профиля, календарь, кнопка "Включить пропуск" (записывает в журнал)
-- Экран настроек: ввод ФИО, учебного заведения, выбор должности, кнопка "Считать пропуск" (реальное NFC), индикатор статуса
-- Журнал посещений
-- Тёмная тема, синие акценты, иконки как в референсах
+School Pass NFC — Версия с расписанием и выбором класса
 """
 
 import json
@@ -23,7 +19,7 @@ from kivymd.uix.button import MDRaisedButton, MDIconButton
 from kivymd.uix.card import MDCard
 from kivymd.uix.label import MDLabel
 from kivymd.uix.dialog import MDDialog
-from kivymd.uix.list import MDList, TwoLineListItem
+from kivymd.uix.list import MDList, TwoLineListItem, OneLineListItem
 from kivy.uix.scrollview import ScrollView
 from kivymd.uix.textfield import MDTextField
 from kivymd.uix.selectioncontrol import MDSwitch, MDCheckbox
@@ -59,6 +55,31 @@ if platform != 'android':
 Window.softinput_mode = 'pan'
 
 # -------------------------------------------------------------------
+# СТАТИЧЕСКОЕ РАСПИСАНИЕ (ПРИМЕР)
+# -------------------------------------------------------------------
+SCHEDULE = {
+    '11А': {
+        0: ['Математика', 'Русский язык', 'Физика', 'Информатика', 'Английский язык'],
+        1: ['Литература', 'Алгебра', 'Химия', 'Биология', 'История'],
+        2: ['Геометрия', 'Русский язык', 'Физика', 'ОБЖ', 'Английский язык'],
+        3: ['Математика', 'Литература', 'Химия', 'Информатика', 'Физическая культура'],
+        4: ['Алгебра', 'Русский язык', 'Биология', 'История', 'Обществознание'],
+        5: [],  # суббота
+        6: []   # воскресенье
+    },
+    '10Б': {
+        0: ['Алгебра', 'Русский язык', 'Физика', 'Информатика', 'Английский язык'],
+        1: ['Геометрия', 'Литература', 'Химия', 'Биология', 'История'],
+        2: ['Математика', 'Русский язык', 'Физика', 'ОБЖ', 'Английский язык'],
+        3: ['Алгебра', 'Литература', 'Химия', 'Информатика', 'Физическая культура'],
+        4: ['Геометрия', 'Русский язык', 'Биология', 'История', 'Обществознание'],
+        5: [],
+        6: []
+    },
+    # можно добавить другие классы
+}
+
+# -------------------------------------------------------------------
 # ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ КАЛЕНДАРЯ
 # -------------------------------------------------------------------
 def get_week_dates():
@@ -76,7 +97,7 @@ class MainScreen(Screen):
         super().__init__(**kwargs)
         self.dialog = None
         self.pass_enabled = False
-        self.last_event_time = None  # для чередования Вход/Выход
+        self.last_event_time = None
         self.build_ui()
         self.load_profile()
 
@@ -169,25 +190,26 @@ class MainScreen(Screen):
         )
         content.add_widget(self.pass_button)
 
-        # --- Сообщение об отсутствии уроков ---
-        content.add_widget(MDLabel(
-            text='Уроков и мероприятий нет',
-            halign='center',
+        # --- Расписание ---
+        schedule_label = MDLabel(
+            text='Расписание на сегодня:',
+            halign='left',
             theme_text_color='Custom',
             text_color=self.get_secondary_text_color(),
-            font_style='Body1',
-            size_hint_y=None,
-            height=40
-        ))
-        content.add_widget(MDLabel(
-            text='Уроков и мероприятий на этот день не найдено',
-            halign='center',
-            theme_text_color='Custom',
-            text_color=self.get_hint_text_color(),
-            font_style='Caption',
+            font_style='Subtitle2',
             size_hint_y=None,
             height=30
-        ))
+        )
+        content.add_widget(schedule_label)
+
+        # Список для уроков
+        self.schedule_list = MDList()
+        self.schedule_scroll = ScrollView(size_hint=(1, 0.5))
+        self.schedule_scroll.add_widget(self.schedule_list)
+        content.add_widget(self.schedule_scroll)
+
+        # --- Сообщение об отсутствии уроков (заменено расписанием, но оставим на случай) ---
+        # content.add_widget(MDLabel(text='Уроков и мероприятий нет', ...))  // можно удалить
 
         scroll = ScrollView(do_scroll_x=False)
         scroll.add_widget(content)
@@ -224,8 +246,39 @@ class MainScreen(Screen):
                     data = json.load(f)
                     self.name_label.text = data.get('name', 'Питирим Батурин')
                     self.role_label.text = data.get('role', 'Ученик')
+                    # Обновляем расписание, если класс есть и роль ученик
+                    if data.get('role') == 'Ученик' and 'class' in data:
+                        self.update_schedule(data['class'])
+                    else:
+                        self.clear_schedule()
         except:
             pass
+
+    def update_schedule(self, class_name):
+        """Обновляет расписание для указанного класса на текущий день"""
+        weekday = date.today().weekday()
+        lessons = SCHEDULE.get(class_name, {}).get(weekday, [])
+        self.clear_schedule()
+        if lessons:
+            for lesson in lessons:
+                item = OneLineListItem(
+                    text=lesson,
+                    divider='Full',
+                    theme_text_color='Custom',
+                    text_color=self.get_text_color()
+                )
+                self.schedule_list.add_widget(item)
+        else:
+            item = OneLineListItem(
+                text='Уроков нет',
+                divider='Full',
+                theme_text_color='Custom',
+                text_color=self.get_hint_text_color()
+            )
+            self.schedule_list.add_widget(item)
+
+    def clear_schedule(self):
+        self.schedule_list.clear_widgets()
 
     def toggle_pass(self, instance):
         # Чередование Вход/Выход
@@ -356,7 +409,6 @@ class SettingsScreen(Screen):
             self.PendingIntent = autoclass('android.app.PendingIntent')
             self.Intent = autoclass('android.content.Intent')
             self.activity = self.PythonActivity.mActivity
-
             self.nfc_adapter = self.NfcAdapter.getDefaultAdapter(self.activity)
         except Exception as e:
             print(f'NFC init error: {e}')
@@ -373,8 +425,7 @@ class SettingsScreen(Screen):
                 self.activity, 0, intent,
                 self.PendingIntent.FLAG_UPDATE_CURRENT | self.PendingIntent.FLAG_IMMUTABLE
             )
-            self.nfc_adapter.enableForegroundDispatch(
-                self.activity, self.nfc_pending_intent, None, None)
+            self.nfc_adapter.enableForegroundDispatch(self.activity, self.nfc_pending_intent, None, None)
         except Exception as e:
             print(f'Enable foreground error: {e}')
 
@@ -426,7 +477,21 @@ class SettingsScreen(Screen):
         role_box.add_widget(teacher_label)
         content.add_widget(role_box)
 
-        # Кнопка привязки пропуска (реальное NFC)
+        # Поле для класса (показываем только для учеников)
+        self.class_field = MDTextField(
+            hint_text='Класс (например, 11А)',
+            size_hint_x=1
+        )
+        # Изначально скрыто
+        self.class_field.opacity = 0
+        self.class_field.disabled = True
+        content.add_widget(self.class_field)
+
+        # Привяжем обработчики для радио-кнопок
+        self.student_radio.bind(active=self.on_role_changed)
+        self.teacher_radio.bind(active=self.on_role_changed)
+
+        # Кнопка привязки пропуска
         btn_bind = MDRaisedButton(
             text='Считать пропуск',
             size_hint=(1, None),
@@ -480,6 +545,15 @@ class SettingsScreen(Screen):
 
         self.add_widget(layout)
 
+    def on_role_changed(self, checkbox, value):
+        """Показываем поле класса, если выбрана роль 'Ученик'"""
+        if checkbox == self.student_radio and value:
+            self.class_field.opacity = 1
+            self.class_field.disabled = False
+        elif checkbox == self.teacher_radio and value:
+            self.class_field.opacity = 0
+            self.class_field.disabled = True
+
     def get_text_color(self):
         app = MDApp.get_running_app()
         return (1, 1, 1, 1) if app.theme_cls.theme_style == 'Dark' else (0, 0, 0, 1)
@@ -502,9 +576,14 @@ class SettingsScreen(Screen):
                     if role == 'Ученик':
                         self.student_radio.active = True
                         self.teacher_radio.active = False
+                        self.class_field.opacity = 1
+                        self.class_field.disabled = False
                     else:
                         self.student_radio.active = False
                         self.teacher_radio.active = True
+                        self.class_field.opacity = 0
+                        self.class_field.disabled = True
+                    self.class_field.text = data.get('class', '')
                     if 'card_uid' in data:
                         self.pass_status.text = f"Пропуск: привязан ({data['card_uid']})"
                     else:
@@ -513,6 +592,9 @@ class SettingsScreen(Screen):
             self.name_field.text = 'Питирим Батурин'
             self.school_field.text = ''
             self.student_radio.active = True
+            self.class_field.text = ''
+            self.class_field.opacity = 1
+            self.class_field.disabled = False
 
     def save_settings(self, *args):
         try:
@@ -524,6 +606,7 @@ class SettingsScreen(Screen):
             data['name'] = self.name_field.text
             data['school'] = self.school_field.text
             data['role'] = 'Ученик' if self.student_radio.active else 'Сотрудник'
+            data['class'] = self.class_field.text
 
             with open('settings.json', 'w') as f:
                 json.dump(data, f)
@@ -532,6 +615,11 @@ class SettingsScreen(Screen):
             if app.main_screen:
                 app.main_screen.name_label.text = self.name_field.text
                 app.main_screen.role_label.text = data['role']
+                # Обновляем расписание, если роль ученик и класс указан
+                if data['role'] == 'Ученик' and data['class']:
+                    app.main_screen.update_schedule(data['class'])
+                else:
+                    app.main_screen.clear_schedule()
 
             self.show_dialog('Настройки сохранены', 'Данные обновлены')
         except Exception as e:
@@ -547,31 +635,21 @@ class SettingsScreen(Screen):
             return
 
         if not self.nfc_adapter.isEnabled():
-            # Можно предложить открыть настройки NFC
             self.show_dialog('NFC выключен', 'Пожалуйста, включите NFC в настройках')
-            # Попытка открыть настройки NFC:
-            # Intent = autoclass('android.content.Intent')
-            # settings_intent = Intent(android.provider.Settings.ACTION_NFC_SETTINGS)
-            # self.activity.startActivity(settings_intent)
             return
 
-        # Активируем foreground dispatch для получения уведомлений о метках
         self.enable_nfc_foreground()
         self.show_dialog('Сканирование', 'Поднесите карту к NFC...')
-        # Устанавливаем флаг, что мы ждём карту
         app = MDApp.get_running_app()
         app.waiting_for_card = True
         app.card_callback = self.on_nfc_tag
 
     def on_nfc_tag(self, tag):
-        """Обработчик, вызываемый при обнаружении метки (из главной активности)"""
         try:
-            # Получаем UID метки
             uid_bytes = tag.getId()
             uid = ''.join(f'{b:02X}' for b in uid_bytes)
             uid_formatted = ':'.join(uid[i:i+2] for i in range(0, len(uid), 2))
 
-            # Сохраняем в настройки
             try:
                 with open('settings.json', 'r') as f:
                     data = json.load(f)
@@ -588,7 +666,6 @@ class SettingsScreen(Screen):
                 except:
                     pass
 
-            # Отключаем foreground dispatch
             self.disable_nfc_foreground()
         except Exception as e:
             Clock.schedule_once(lambda dt: self.show_dialog('Ошибка', f'Не удалось считать карту: {e}'))
@@ -682,7 +759,6 @@ class SchoolPassApp(MDApp):
         return self.bottom_nav
 
     def on_new_intent(self, intent):
-        """Обработка входящих интентов (для NFC)"""
         if not self.waiting_for_card:
             return
         if platform != 'android':
