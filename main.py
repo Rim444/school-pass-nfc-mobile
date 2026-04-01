@@ -1,6 +1,5 @@
 """
-School Pass NFC — Версия с выбором класса через выпадающие списки и тестовым расписанием
-(исправлено отображение расписания)
+School Pass NFC — Версия с ручным добавлением расписания
 """
 
 import json
@@ -27,6 +26,7 @@ from kivymd.uix.selectioncontrol import MDSwitch, MDCheckbox
 from kivymd.uix.bottomnavigation import MDBottomNavigation, MDBottomNavigationItem
 from kivymd.uix.toolbar import MDTopAppBar
 from kivymd.uix.menu import MDDropdownMenu
+from kivymd.uix.button import MDFlatButton
 from plyer import vibrator
 
 # ================================================================
@@ -57,37 +57,24 @@ if platform != 'android':
 Window.softinput_mode = 'pan'
 
 # -------------------------------------------------------------------
-# ФУНКЦИИ ДЛЯ ГЕНЕРАЦИИ ТЕСТОВОГО РАСПИСАНИЯ
+# ФИКСИРОВАННОЕ РАСПИСАНИЕ УРОКОВ ПО НОМЕРАМ
 # -------------------------------------------------------------------
-def generate_schedule_for_all_classes():
-    """
-    Генерирует тестовое расписание для всех классов.
-    Каждый класс получает одинаковое расписание: каждый день 7 уроков "Информатика".
-    """
-    days = range(7)  # 0=пн, 6=вс
-    lessons = ['Информатика'] * 7
-    schedule = {}
-    # Параллели 5-9 с буквами А-Д
-    for grade in range(5, 10):
-        for letter in ['А', 'Б', 'В', 'Г', 'Д']:
-            class_name = f"{grade}{letter}"
-            schedule[class_name] = {day: lessons.copy() for day in days}
-    # Параллели 10-11 с буквами А-В
-    for grade in range(10, 12):
-        for letter in ['А', 'Б', 'В']:
-            class_name = f"{grade}{letter}"
-            schedule[class_name] = {day: lessons.copy() for day in days}
-    return schedule
-
-# Генерируем словарь расписания один раз при старте
-SCHEDULE = generate_schedule_for_all_classes()
+LESSON_TIMES = {
+    1: '8:30 – 9:15',
+    2: '9:25 – 10:10',
+    3: '10:20 – 11:05',
+    4: '11:25 – 12:10',
+    5: '12:30 – 13:15',
+    6: '13:25 – 14:10',
+    7: '14:30 – 15:15'
+}
 
 # -------------------------------------------------------------------
 # ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ КАЛЕНДАРЯ
 # -------------------------------------------------------------------
 def get_week_dates():
     today = date.today()
-    start = today - timedelta(days=today.weekday())  # понедельник
+    start = today - timedelta(days=today.weekday())
     return [(start + timedelta(days=i)) for i in range(7)]
 
 week_days_ru = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
@@ -99,10 +86,12 @@ class MainScreen(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.dialog = None
+        self.add_event_dialog = None
         self.pass_enabled = False
         self.last_event_time = None
+        self.schedule_events = []  # список событий (словари с lesson_num, subject)
         self.build_ui()
-        self.load_profile()
+        self.load_schedule()
 
     def build_ui(self):
         layout = MDBoxLayout(orientation='vertical', spacing=0, padding=0)
@@ -183,7 +172,7 @@ class MainScreen(Screen):
             ))
         content.add_widget(nums_layout)
 
-        # --- Кнопка включения пропуска (записывает в журнал) ---
+        # --- Кнопка включения пропуска ---
         self.pass_button = MDRaisedButton(
             text='Включить пропуск',
             size_hint=(1, None),
@@ -193,9 +182,19 @@ class MainScreen(Screen):
         )
         content.add_widget(self.pass_button)
 
+        # --- Кнопка добавления события ---
+        add_event_btn = MDRaisedButton(
+            text='Добавить событие',
+            size_hint=(1, None),
+            height=48,
+            md_bg_color=self.get_accent_color(),
+            on_release=self.show_add_event_dialog
+        )
+        content.add_widget(add_event_btn)
+
         # --- Расписание ---
         schedule_label = MDLabel(
-            text='Расписание на сегодня:',
+            text='Моё расписание:',
             halign='left',
             theme_text_color='Custom',
             text_color=self.get_secondary_text_color(),
@@ -205,10 +204,16 @@ class MainScreen(Screen):
         )
         content.add_widget(schedule_label)
 
-        # Список для уроков
-        self.schedule_list = MDList()
+        # Контейнер для событий
+        self.schedule_container = MDBoxLayout(
+            orientation='vertical',
+            spacing=5,
+            size_hint_y=None
+        )
+        self.schedule_container.bind(minimum_height=self.schedule_container.setter('height'))
+
         self.schedule_scroll = ScrollView(size_hint=(1, 0.5))
-        self.schedule_scroll.add_widget(self.schedule_list)
+        self.schedule_scroll.add_widget(self.schedule_container)
         content.add_widget(self.schedule_scroll)
 
         scroll = ScrollView(do_scroll_x=False)
@@ -246,62 +251,174 @@ class MainScreen(Screen):
                     data = json.load(f)
                     self.name_label.text = data.get('name', 'Питирим Батурин')
                     self.role_label.text = data.get('role', 'Ученик')
-                    # Обновляем расписание, если роль ученик и класс сохранён
-                    if data.get('role') == 'Ученик' and 'class' in data and data['class']:
-                        self.update_schedule(data['class'])
-                    else:
-                        self.clear_schedule()
         except Exception as e:
             print(f"Ошибка загрузки профиля: {e}")
-            traceback.print_exc()
 
-    def update_schedule(self, class_name):
-        """Обновляет расписание для указанного класса на текущий день"""
+    def load_schedule(self):
+        """Загружает расписание из schedule.json"""
         try:
-            if not class_name:
-                self.clear_schedule()
+            if os.path.exists('schedule.json'):
+                with open('schedule.json', 'r') as f:
+                    self.schedule_events = json.load(f)
+            else:
+                self.schedule_events = []
+            self.update_schedule_display()
+        except Exception as e:
+            print(f"Ошибка загрузки расписания: {e}")
+            self.schedule_events = []
+
+    def save_schedule(self):
+        """Сохраняет расписание в schedule.json"""
+        try:
+            with open('schedule.json', 'w') as f:
+                json.dump(self.schedule_events, f)
+        except Exception as e:
+            print(f"Ошибка сохранения расписания: {e}")
+
+    def update_schedule_display(self):
+        """Обновляет отображение расписания на экране"""
+        self.schedule_container.clear_widgets()
+        if not self.schedule_events:
+            item = OneLineListItem(
+                text='Нет добавленных событий',
+                divider='Full',
+                theme_text_color='Custom',
+                text_color=self.get_hint_text_color()
+            )
+            self.schedule_container.add_widget(item)
+        else:
+            # Сортируем по номеру урока
+            sorted_events = sorted(self.schedule_events, key=lambda x: x['lesson_num'])
+            for event in sorted_events:
+                lesson_num = event['lesson_num']
+                subject = event['subject']
+                time_range = LESSON_TIMES.get(lesson_num, '')
+                # Карточка события
+                card = MDCard(
+                    orientation='vertical',
+                    padding=10,
+                    spacing=5,
+                    size_hint=(1, None),
+                    height=80,
+                    elevation=2,
+                    radius=10,
+                    md_bg_color=self.get_card_bg_color()
+                )
+                # Верхняя строка: номер урока и время
+                header = MDBoxLayout(orientation='horizontal', adaptive_height=True)
+                header.add_widget(MDLabel(
+                    text=f'{lesson_num} урок',
+                    font_style='Subtitle1',
+                    theme_text_color='Custom',
+                    text_color=self.get_text_color(),
+                    size_hint_x=0.5
+                ))
+                header.add_widget(MDLabel(
+                    text=time_range,
+                    font_style='Caption',
+                    theme_text_color='Custom',
+                    text_color=self.get_secondary_text_color(),
+                    halign='right',
+                    size_hint_x=0.5
+                ))
+                card.add_widget(header)
+                # Название предмета
+                card.add_widget(MDLabel(
+                    text=subject,
+                    font_style='Body1',
+                    theme_text_color='Custom',
+                    text_color=self.get_accent_color()
+                ))
+                # Кнопка удаления
+                delete_btn = MDIconButton(
+                    icon='delete',
+                    size_hint=(1, None),
+                    height=30,
+                    on_release=lambda x, e=event: self.delete_event(e)
+                )
+                card.add_widget(delete_btn)
+                self.schedule_container.add_widget(card)
+
+        Clock.schedule_once(lambda dt: self.schedule_container.do_layout(), 0)
+
+    def delete_event(self, event):
+        """Удаляет событие из расписания"""
+        self.schedule_events.remove(event)
+        self.save_schedule()
+        self.update_schedule_display()
+        self.show_dialog('Удалено', 'Событие удалено из расписания')
+
+    def show_add_event_dialog(self, instance):
+        """Показывает диалог добавления события"""
+        if not self.add_event_dialog:
+            # Поле для выбора урока
+            self.lesson_spinner = MDTextField(
+                hint_text='Номер урока (1-7)',
+                input_filter='int',
+                size_hint_x=1
+            )
+            self.subject_field = MDTextField(
+                hint_text='Название предмета',
+                size_hint_x=1
+            )
+            self.add_event_dialog = MDDialog(
+                title='Добавить событие',
+                type='custom',
+                content_cl=MDBoxLayout(
+                    orientation='vertical',
+                    spacing=10,
+                    padding=10,
+                    size_hint_y=None,
+                    height=150
+                ),
+                buttons=[
+                    MDFlatButton(
+                        text='ОТМЕНА',
+                        on_release=lambda x: self.add_event_dialog.dismiss()
+                    ),
+                    MDRaisedButton(
+                        text='ДОБАВИТЬ',
+                        on_release=self.add_event
+                    )
+                ]
+            )
+            self.add_event_dialog.content_cl.add_widget(self.lesson_spinner)
+            self.add_event_dialog.content_cl.add_widget(self.subject_field)
+        else:
+            self.lesson_spinner.text = ''
+            self.subject_field.text = ''
+        self.add_event_dialog.open()
+
+    def add_event(self, instance):
+        """Добавляет новое событие"""
+        try:
+            lesson_num = int(self.lesson_spinner.text)
+            if lesson_num < 1 or lesson_num > 7:
+                self.show_dialog('Ошибка', 'Номер урока должен быть от 1 до 7')
+                return
+            subject = self.subject_field.text.strip()
+            if not subject:
+                self.show_dialog('Ошибка', 'Введите название предмета')
                 return
 
-            weekday = date.today().weekday()
-            lessons = SCHEDULE.get(class_name, {}).get(weekday, [])
-            self.clear_schedule()
+            # Проверяем, нет ли уже такого урока
+            for event in self.schedule_events:
+                if event['lesson_num'] == lesson_num:
+                    self.show_dialog('Ошибка', f'Урок №{lesson_num} уже добавлен')
+                    return
 
-            if lessons:
-                for lesson in lessons:
-                    item = OneLineListItem(
-                        text=lesson,
-                        divider='Full',
-                        theme_text_color='Custom',
-                        text_color=self.get_text_color()
-                    )
-                    self.schedule_list.add_widget(item)
-            else:
-                item = OneLineListItem(
-                    text='Уроков нет',
-                    divider='Full',
-                    theme_text_color='Custom',
-                    text_color=self.get_hint_text_color()
-                )
-                self.schedule_list.add_widget(item)
-
-            # Принудительное обновление интерфейса
-            Clock.schedule_once(lambda dt: self.schedule_list.do_layout(), 0)
-            # Небольшая задержка, чтобы ScrollView успел пересчитать размеры
-            Clock.schedule_once(lambda dt: setattr(self.schedule_scroll, 'scroll_y', 1), 0.1)
-        except Exception as e:
-            print(f"Ошибка обновления расписания: {e}")
-            traceback.print_exc()
-            self.show_dialog('Ошибка', f'Не удалось загрузить расписание: {e}')
-
-    def clear_schedule(self):
-        try:
-            self.schedule_list.clear_widgets()
-            Clock.schedule_once(lambda dt: self.schedule_list.do_layout(), 0)
-        except Exception as e:
-            print(f"Ошибка очистки расписания: {e}")
+            self.schedule_events.append({
+                'lesson_num': lesson_num,
+                'subject': subject
+            })
+            self.save_schedule()
+            self.update_schedule_display()
+            self.add_event_dialog.dismiss()
+            self.show_dialog('Успех', f'Урок {lesson_num} добавлен')
+        except ValueError:
+            self.show_dialog('Ошибка', 'Введите корректный номер урока')
 
     def toggle_pass(self, instance):
-        # Чередование Вход/Выход
         now = datetime.now()
         time_str = now.strftime('%d.%m.%Y %H:%M')
         if self.last_event_time is None or self.last_event_time == 'exit':
@@ -311,12 +428,10 @@ class MainScreen(Screen):
             event_type = 'Выход'
             self.last_event_time = 'exit'
 
-        # Добавляем запись в журнал
         app = MDApp.get_running_app()
         if app.log_screen:
             app.log_screen.add_entry(event_type, time_str)
 
-        # Меняем состояние кнопки (просто для визуала)
         self.pass_enabled = not self.pass_enabled
         if self.pass_enabled:
             self.pass_button.text = 'Выключить пропуск'
@@ -341,7 +456,7 @@ class MainScreen(Screen):
 
 
 # -------------------------------------------------------------------
-# ЭКРАН ЖУРНАЛА
+# ЭКРАН ЖУРНАЛА (без изменений, оставлен для краткости)
 # -------------------------------------------------------------------
 class LogScreen(Screen):
     def __init__(self, **kwargs):
@@ -407,7 +522,7 @@ class LogScreen(Screen):
 
 
 # -------------------------------------------------------------------
-# ЭКРАН НАСТРОЕК
+# ЭКРАН НАСТРОЕК (сокращён, без выбора класса)
 # -------------------------------------------------------------------
 class SettingsScreen(Screen):
     def __init__(self, **kwargs):
@@ -415,17 +530,12 @@ class SettingsScreen(Screen):
         self.dialog = None
         self.nfc_adapter = None
         self.nfc_pending_intent = None
-        self.grade_menu = None
-        self.letter_menu = None
-        self.selected_grade = None  # выбранная параллель (число)
-        self.selected_letter = None  # выбранная буква
         self.build_ui()
         self.load_settings()
         if platform == 'android':
             self.init_nfc()
 
     def init_nfc(self):
-        """Инициализация NFC через pyjnius"""
         try:
             from jnius import autoclass
             self.PythonActivity = autoclass('org.kivy.android.PythonActivity')
@@ -439,7 +549,6 @@ class SettingsScreen(Screen):
             self.nfc_adapter = None
 
     def enable_nfc_foreground(self):
-        """Включаем приём NFC-интентов в foreground"""
         if self.nfc_adapter is None:
             return
         try:
@@ -467,73 +576,26 @@ class SettingsScreen(Screen):
 
         content = MDBoxLayout(orientation='vertical', spacing=15, padding=20, adaptive_height=True)
 
-        self.name_field = MDTextField(
-            hint_text='ФИО',
-            size_hint_x=1
-        )
+        self.name_field = MDTextField(hint_text='ФИО', size_hint_x=1)
         content.add_widget(self.name_field)
 
-        self.school_field = MDTextField(
-            hint_text='Учебное заведение',
-            size_hint_x=1
-        )
+        self.school_field = MDTextField(hint_text='Учебное заведение', size_hint_x=1)
         content.add_widget(self.school_field)
 
-        # Выбор должности
-        role_label = MDLabel(
-            text='Должность:',
-            theme_text_color='Custom',
-            text_color=self.get_text_color(),
-            size_hint_y=None,
-            height=30
-        )
+        role_label = MDLabel(text='Должность:', theme_text_color='Custom', text_color=self.get_text_color())
         content.add_widget(role_label)
 
-        role_box = MDBoxLayout(orientation='horizontal', adaptive_height=True, spacing=20, padding=[0,0,0,0])
+        role_box = MDBoxLayout(orientation='horizontal', adaptive_height=True, spacing=20)
         self.student_radio = MDCheckbox(group='role', size_hint=(None, None), size=(48, 48))
         student_label = MDLabel(text='Ученик', size_hint_x=0.4, halign='left')
         self.teacher_radio = MDCheckbox(group='role', size_hint=(None, None), size=(48, 48))
         teacher_label = MDLabel(text='Сотрудник', size_hint_x=0.4, halign='left')
-
         role_box.add_widget(self.student_radio)
         role_box.add_widget(student_label)
         role_box.add_widget(self.teacher_radio)
         role_box.add_widget(teacher_label)
         content.add_widget(role_box)
 
-        # --- Блок выбора класса (появляется только для учеников) ---
-        self.class_selection_box = MDBoxLayout(orientation='vertical', spacing=10, size_hint_y=None, height=100)
-        self.class_selection_box.opacity = 0
-        self.class_selection_box.disabled = True
-
-        # Кнопка для выбора параллели
-        self.grade_button = MDRaisedButton(
-            text='Параллель',
-            size_hint=(1, None),
-            height=48,
-            md_bg_color=self.get_accent_color(),
-            on_release=self.show_grade_menu
-        )
-        self.class_selection_box.add_widget(self.grade_button)
-
-        # Кнопка для выбора буквы
-        self.letter_button = MDRaisedButton(
-            text='Буква',
-            size_hint=(1, None),
-            height=48,
-            md_bg_color=self.get_accent_color(),
-            on_release=self.show_letter_menu,
-            disabled=True
-        )
-        self.class_selection_box.add_widget(self.letter_button)
-
-        content.add_widget(self.class_selection_box)
-
-        # Привяжем обработчики для радио-кнопок
-        self.student_radio.bind(active=self.on_role_changed)
-        self.teacher_radio.bind(active=self.on_role_changed)
-
-        # Кнопка привязки пропуска
         btn_bind = MDRaisedButton(
             text='Считать пропуск',
             size_hint=(1, None),
@@ -554,7 +616,6 @@ class SettingsScreen(Screen):
         )
         content.add_widget(self.pass_status)
 
-        # Переключатель темы
         theme_box = MDBoxLayout(orientation='horizontal', adaptive_height=True, spacing=10)
         theme_box.add_widget(MDLabel(text='Тёмная тема', size_hint_x=0.7))
         self.theme_switch = MDSwitch(size_hint_x=0.3)
@@ -584,79 +645,7 @@ class SettingsScreen(Screen):
         scroll = ScrollView(do_scroll_x=False)
         scroll.add_widget(content)
         layout.add_widget(scroll)
-
         self.add_widget(layout)
-
-    def on_role_changed(self, checkbox, value):
-        """Показываем блок выбора класса, если выбрана роль 'Ученик'"""
-        if checkbox == self.student_radio and value:
-            self.class_selection_box.opacity = 1
-            self.class_selection_box.disabled = False
-        elif checkbox == self.teacher_radio and value:
-            self.class_selection_box.opacity = 0
-            self.class_selection_box.disabled = True
-
-    def show_grade_menu(self, button):
-        """Показывает выпадающее меню для выбора параллели (5-11)"""
-        grade_items = [
-            {"text": f"{i}", "viewclass": "OneLineListItem", "on_release": lambda x=f"{i}": self.set_grade(x)}
-            for i in range(5, 12)
-        ]
-        self.grade_menu = MDDropdownMenu(
-            caller=button,
-            items=grade_items,
-            width_mult=2,
-        )
-        self.grade_menu.open()
-
-    def set_grade(self, grade_str):
-        """Устанавливает выбранную параллель и обновляет кнопку"""
-        self.selected_grade = grade_str
-        self.grade_button.text = f"{grade_str} класс"
-        self.grade_menu.dismiss()
-        # Активируем кнопку выбора буквы и обновляем её меню
-        self.letter_button.disabled = False
-        self.update_letter_menu()
-        # Сбрасываем выбор буквы
-        self.selected_letter = None
-        self.letter_button.text = 'Буква'
-
-    def update_letter_menu(self):
-        """Формирует список букв для выбранной параллели"""
-        grade = int(self.selected_grade) if self.selected_grade else 0
-        if 5 <= grade <= 9:
-            letters = ['А', 'Б', 'В', 'Г', 'Д']
-        elif grade in (10, 11):
-            letters = ['А', 'Б', 'В']
-        else:
-            letters = []
-        self.letter_items = [
-            {"text": letter, "viewclass": "OneLineListItem", "on_release": lambda x=letter: self.set_letter(x)}
-            for letter in letters
-        ]
-
-    def show_letter_menu(self, button):
-        """Показывает выпадающее меню для выбора буквы"""
-        if not hasattr(self, 'letter_items') or not self.letter_items:
-            return
-        self.letter_menu = MDDropdownMenu(
-            caller=button,
-            items=self.letter_items,
-            width_mult=2,
-        )
-        self.letter_menu.open()
-
-    def set_letter(self, letter):
-        """Устанавливает выбранную букву и обновляет кнопку"""
-        self.selected_letter = letter
-        self.letter_button.text = letter
-        self.letter_menu.dismiss()
-
-    def get_selected_class(self):
-        """Возвращает строку класса (например, '11А') или None"""
-        if self.selected_grade and self.selected_letter:
-            return f"{self.selected_grade}{self.selected_letter}"
-        return None
 
     def get_text_color(self):
         app = MDApp.get_running_app()
@@ -680,44 +669,17 @@ class SettingsScreen(Screen):
                     if role == 'Ученик':
                         self.student_radio.active = True
                         self.teacher_radio.active = False
-                        self.class_selection_box.opacity = 1
-                        self.class_selection_box.disabled = False
-                        # Загружаем сохранённый класс
-                        saved_class = data.get('class', '')
-                        if saved_class and isinstance(saved_class, str) and len(saved_class) >= 2:
-                            grade_str = saved_class[:-1]
-                            letter = saved_class[-1]
-                            if grade_str.isdigit() and 5 <= int(grade_str) <= 11:
-                                self.selected_grade = grade_str
-                                self.grade_button.text = f"{grade_str} класс"
-                                self.update_letter_menu()
-                                self.selected_letter = letter
-                                self.letter_button.text = letter
-                                self.letter_button.disabled = False
                     else:
                         self.student_radio.active = False
                         self.teacher_radio.active = True
-                        self.class_selection_box.opacity = 0
-                        self.class_selection_box.disabled = True
-
                     if 'card_uid' in data:
                         self.pass_status.text = f"Пропуск: привязан ({data['card_uid']})"
                     else:
                         self.pass_status.text = 'Пропуск: не привязан'
-        except Exception as e:
-            print(f"Ошибка загрузки настроек: {e}")
-            traceback.print_exc()
+        except:
             self.name_field.text = 'Питирим Батурин'
             self.school_field.text = ''
             self.student_radio.active = True
-            self.teacher_radio.active = False
-            self.class_selection_box.opacity = 1
-            self.class_selection_box.disabled = False
-            self.selected_grade = None
-            self.selected_letter = None
-            self.grade_button.text = 'Параллель'
-            self.letter_button.text = 'Буква'
-            self.letter_button.disabled = True
 
     def save_settings(self, *args):
         try:
@@ -729,16 +691,6 @@ class SettingsScreen(Screen):
             data['name'] = self.name_field.text
             data['school'] = self.school_field.text
             data['role'] = 'Ученик' if self.student_radio.active else 'Сотрудник'
-            # Сохраняем класс, если роль ученик и выбран
-            if self.student_radio.active:
-                selected_class = self.get_selected_class()
-                if selected_class:
-                    data['class'] = selected_class
-                elif 'class' in data:
-                    del data['class']
-            else:
-                if 'class' in data:
-                    del data['class']
 
             with open('settings.json', 'w') as f:
                 json.dump(data, f)
@@ -747,16 +699,9 @@ class SettingsScreen(Screen):
             if app.main_screen:
                 app.main_screen.name_label.text = self.name_field.text
                 app.main_screen.role_label.text = data['role']
-                # Обновляем расписание, если роль ученик и класс сохранён
-                if data['role'] == 'Ученик' and 'class' in data and data['class']:
-                    app.main_screen.update_schedule(data['class'])
-                else:
-                    app.main_screen.clear_schedule()
 
             self.show_dialog('Настройки сохранены', 'Данные обновлены')
         except Exception as e:
-            print(f"Ошибка сохранения настроек: {e}")
-            traceback.print_exc()
             self.show_dialog('Ошибка', f'Не удалось сохранить: {e}')
 
     def bind_pass(self, *args):
