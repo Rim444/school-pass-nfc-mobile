@@ -256,7 +256,6 @@ class MainScreen(Screen):
             print(f"Ошибка загрузки профиля: {e}")
 
     def load_schedule(self):
-        """Загружает расписание из schedule.json"""
         try:
             if os.path.exists('schedule.json'):
                 with open('schedule.json', 'r') as f:
@@ -269,7 +268,6 @@ class MainScreen(Screen):
             self.schedule_events = []
 
     def save_schedule(self):
-        """Сохраняет расписание в schedule.json"""
         try:
             with open('schedule.json', 'w') as f:
                 json.dump(self.schedule_events, f)
@@ -277,7 +275,6 @@ class MainScreen(Screen):
             print(f"Ошибка сохранения расписания: {e}")
 
     def update_schedule_display(self):
-        """Обновляет отображение расписания на экране"""
         self.schedule_container.clear_widgets()
         if not self.schedule_events:
             item = OneLineListItem(
@@ -288,23 +285,24 @@ class MainScreen(Screen):
             )
             self.schedule_container.add_widget(item)
         else:
-            # Сортируем по номеру урока
             sorted_events = sorted(self.schedule_events, key=lambda x: x['lesson_num'])
-            for event in sorted_events:
+            for idx, event in enumerate(sorted_events):
                 lesson_num = event['lesson_num']
                 subject = event['subject']
                 time_range = LESSON_TIMES.get(lesson_num, '')
+
                 # Карточка события
                 card = MDCard(
                     orientation='vertical',
                     padding=10,
                     spacing=5,
                     size_hint=(1, None),
-                    height=80,
+                    height=100,
                     elevation=2,
                     radius=10,
                     md_bg_color=self.get_card_bg_color()
                 )
+
                 # Верхняя строка: номер урока и время
                 header = MDBoxLayout(orientation='horizontal', adaptive_height=True)
                 header.add_widget(MDLabel(
@@ -312,7 +310,7 @@ class MainScreen(Screen):
                     font_style='Subtitle1',
                     theme_text_color='Custom',
                     text_color=self.get_text_color(),
-                    size_hint_x=0.5
+                    size_hint_x=0.6
                 ))
                 header.add_widget(MDLabel(
                     text=time_range,
@@ -320,30 +318,35 @@ class MainScreen(Screen):
                     theme_text_color='Custom',
                     text_color=self.get_secondary_text_color(),
                     halign='right',
-                    size_hint_x=0.5
+                    size_hint_x=0.4
                 ))
                 card.add_widget(header)
+
                 # Название предмета
                 card.add_widget(MDLabel(
                     text=subject,
                     font_style='Body1',
                     theme_text_color='Custom',
-                    text_color=self.get_accent_color()
+                    text_color=self.get_accent_color(),
+                    size_hint_y=None,
+                    height=30
                 ))
+
                 # Кнопка удаления
-                delete_btn = MDIconButton(
-                    icon='delete',
+                delete_btn = MDRaisedButton(
+                    text='Удалить',
                     size_hint=(1, None),
                     height=30,
-                    on_release=partial(self.delete_event, event)
+                    md_bg_color=(0.8, 0.2, 0.2, 1),
+                    on_release=lambda x, e=event: self.delete_event(e)
                 )
                 card.add_widget(delete_btn)
+
                 self.schedule_container.add_widget(card)
 
         Clock.schedule_once(lambda dt: self.schedule_container.do_layout(), 0)
 
-    def delete_event(self, event, *args):
-        """Удаляет событие из расписания"""
+    def delete_event(self, event):
         if event in self.schedule_events:
             self.schedule_events.remove(event)
             self.save_schedule()
@@ -351,9 +354,7 @@ class MainScreen(Screen):
             self.show_dialog('Удалено', 'Событие удалено из расписания')
 
     def show_add_event_dialog(self, instance):
-        """Показывает диалог добавления события"""
         if not self.add_event_dialog:
-            # Создаём поля ввода
             self.lesson_spinner = MDTextField(
                 hint_text='Номер урока (1-7)',
                 input_filter='int',
@@ -363,7 +364,6 @@ class MainScreen(Screen):
                 hint_text='Название предмета',
                 size_hint_x=1
             )
-            # Контейнер для полей
             content = MDBoxLayout(
                 orientation='vertical',
                 spacing=10,
@@ -390,13 +390,11 @@ class MainScreen(Screen):
                 ]
             )
         else:
-            # Очищаем поля перед повторным открытием
             self.lesson_spinner.text = ''
             self.subject_field.text = ''
         self.add_event_dialog.open()
 
     def add_event(self, instance):
-        """Добавляет новое событие"""
         try:
             lesson_num = int(self.lesson_spinner.text)
             if lesson_num < 1 or lesson_num > 7:
@@ -407,7 +405,6 @@ class MainScreen(Screen):
                 self.show_dialog('Ошибка', 'Введите название предмета')
                 return
 
-            # Проверяем, нет ли уже такого урока
             for event in self.schedule_events:
                 if event['lesson_num'] == lesson_num:
                     self.show_dialog('Ошибка', f'Урок №{lesson_num} уже добавлен')
