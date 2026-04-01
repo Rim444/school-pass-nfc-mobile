@@ -9,13 +9,14 @@ import time
 import sys
 import traceback
 from datetime import datetime, date, timedelta
+from functools import partial
 from kivy.clock import Clock
 from kivy.core.window import Window
 from kivy.uix.screenmanager import Screen
 from kivy.utils import platform
 from kivymd.app import MDApp
 from kivymd.uix.boxlayout import MDBoxLayout
-from kivymd.uix.button import MDRaisedButton, MDIconButton
+from kivymd.uix.button import MDRaisedButton, MDIconButton, MDFlatButton
 from kivymd.uix.card import MDCard
 from kivymd.uix.label import MDLabel
 from kivymd.uix.dialog import MDDialog
@@ -25,8 +26,6 @@ from kivymd.uix.textfield import MDTextField
 from kivymd.uix.selectioncontrol import MDSwitch, MDCheckbox
 from kivymd.uix.bottomnavigation import MDBottomNavigation, MDBottomNavigationItem
 from kivymd.uix.toolbar import MDTopAppBar
-from kivymd.uix.menu import MDDropdownMenu
-from kivymd.uix.button import MDFlatButton
 from plyer import vibrator
 
 # ================================================================
@@ -87,9 +86,11 @@ class MainScreen(Screen):
         super().__init__(**kwargs)
         self.dialog = None
         self.add_event_dialog = None
+        self.lesson_spinner = None
+        self.subject_field = None
         self.pass_enabled = False
         self.last_event_time = None
-        self.schedule_events = []  # список событий (словари с lesson_num, subject)
+        self.schedule_events = []
         self.build_ui()
         self.load_schedule()
 
@@ -334,24 +335,25 @@ class MainScreen(Screen):
                     icon='delete',
                     size_hint=(1, None),
                     height=30,
-                    on_release=lambda x, e=event: self.delete_event(e)
+                    on_release=partial(self.delete_event, event)
                 )
                 card.add_widget(delete_btn)
                 self.schedule_container.add_widget(card)
 
         Clock.schedule_once(lambda dt: self.schedule_container.do_layout(), 0)
 
-    def delete_event(self, event):
+    def delete_event(self, event, *args):
         """Удаляет событие из расписания"""
-        self.schedule_events.remove(event)
-        self.save_schedule()
-        self.update_schedule_display()
-        self.show_dialog('Удалено', 'Событие удалено из расписания')
+        if event in self.schedule_events:
+            self.schedule_events.remove(event)
+            self.save_schedule()
+            self.update_schedule_display()
+            self.show_dialog('Удалено', 'Событие удалено из расписания')
 
     def show_add_event_dialog(self, instance):
         """Показывает диалог добавления события"""
         if not self.add_event_dialog:
-            # Поле для выбора урока
+            # Создаём поля ввода
             self.lesson_spinner = MDTextField(
                 hint_text='Номер урока (1-7)',
                 input_filter='int',
@@ -361,16 +363,21 @@ class MainScreen(Screen):
                 hint_text='Название предмета',
                 size_hint_x=1
             )
+            # Контейнер для полей
+            content = MDBoxLayout(
+                orientation='vertical',
+                spacing=10,
+                padding=10,
+                size_hint_y=None,
+                height=150
+            )
+            content.add_widget(self.lesson_spinner)
+            content.add_widget(self.subject_field)
+
             self.add_event_dialog = MDDialog(
                 title='Добавить событие',
                 type='custom',
-                content_cl=MDBoxLayout(
-                    orientation='vertical',
-                    spacing=10,
-                    padding=10,
-                    size_hint_y=None,
-                    height=150
-                ),
+                content_cl=content,
                 buttons=[
                     MDFlatButton(
                         text='ОТМЕНА',
@@ -382,9 +389,8 @@ class MainScreen(Screen):
                     )
                 ]
             )
-            self.add_event_dialog.content_cl.add_widget(self.lesson_spinner)
-            self.add_event_dialog.content_cl.add_widget(self.subject_field)
         else:
+            # Очищаем поля перед повторным открытием
             self.lesson_spinner.text = ''
             self.subject_field.text = ''
         self.add_event_dialog.open()
@@ -456,7 +462,7 @@ class MainScreen(Screen):
 
 
 # -------------------------------------------------------------------
-# ЭКРАН ЖУРНАЛА (без изменений, оставлен для краткости)
+# ЭКРАН ЖУРНАЛА
 # -------------------------------------------------------------------
 class LogScreen(Screen):
     def __init__(self, **kwargs):
@@ -522,7 +528,7 @@ class LogScreen(Screen):
 
 
 # -------------------------------------------------------------------
-# ЭКРАН НАСТРОЕК (сокращён, без выбора класса)
+# ЭКРАН НАСТРОЕК
 # -------------------------------------------------------------------
 class SettingsScreen(Screen):
     def __init__(self, **kwargs):
